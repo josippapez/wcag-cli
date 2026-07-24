@@ -104,6 +104,10 @@ The CLI follows a simple argument convention:
 - **Required arguments** are positional and must be provided in the order defined by the command's schema.
 - **Optional arguments** are provided as `--flags` with values (e.g., `--include_lower`, `--principle 1`).
 
+**Known limitations**:
+- Place `--flags` *after* positional arguments. A bare boolean flag placed before a positional will consume the positional as its value.
+- Positional values starting with `-` or `--` are parsed as flags, not positionals, and are not supported.
+
 ### Getting Help
 
 ```bash

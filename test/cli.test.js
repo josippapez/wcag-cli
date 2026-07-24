@@ -41,3 +41,15 @@ test('unknown command exits 1 with stderr', () => {
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown command/i);
 });
+
+test('get-criterion with no positional exits 1 with stderr', () => {
+  const r = runFail(['get-criterion']);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /requires argument/i);
+});
+
+test('search-wcag with no positional exits 1 with stderr', () => {
+  const r = runFail(['search-wcag']);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /requires argument/i);
+});

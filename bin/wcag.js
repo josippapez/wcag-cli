@@ -43,6 +43,7 @@ async function main() {
   if (!tool) {
     process.stderr.write(`wcag: unknown command '${command}'. Run 'wcag --help' for the list.\n`);
     process.exit(1);
+    return;
   }
 
   if (help) {
@@ -51,6 +52,15 @@ async function main() {
   }
 
   const args = buildToolArgs(tool, positionals, flags);
+  const missing = (tool.inputSchema?.required ?? []).filter((name) => !(name in args));
+  if (missing.length > 0) {
+    process.stderr.write(
+      `wcag: '${command}' requires argument(s): ${missing.join(', ')}. Run 'wcag ${command} --help'.\n`
+    );
+    process.exit(1);
+    return;
+  }
+
   const res = await tool.handler(args);
   const text = res?.content?.[0]?.text ?? '';
   process.stdout.write(text.endsWith('\n') ? text : text + '\n');
