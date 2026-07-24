@@ -8,10 +8,10 @@ A command-line interface for WCAG 2.2 guidelines, techniques, and glossary — p
 
 ```bash
 # Global install
-npm install -g wcag-cli
+npm install -g @rawwee/wcag-cli
 
 # Or run without install
-npx wcag-cli <command>
+npx @rawwee/wcag-cli <command>
 ```
 
 **Requirements**: Node.js ≥ 18.0.0
@@ -130,7 +130,7 @@ WCAG data is shipped inside the pinned `wcag-guidelines-mcp` dependency. To upda
 
 1. Bump the `wcag-guidelines-mcp` version in `package.json`
 2. Run `npm install`
-3. Republish `wcag-cli` to npm
+3. Republish `@rawwee/wcag-cli` to npm
 
 ## Attribution
 
