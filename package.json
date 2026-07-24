@@ -1,0 +1,13 @@
+{
+  "name": "wcag-cli",
+  "version": "0.1.0",
+  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data. Zero-token-cost alternative to the WCAG MCP.",
+  "type": "module",
+  "bin": { "wcag": "bin/wcag.js" },
+  "files": ["bin/", "src/", "README.md"],
+  "keywords": ["wcag", "accessibility", "a11y", "w3c", "cli"],
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" },
+  "scripts": { "test": "node --test" },
+  "dependencies": { "wcag-guidelines-mcp": "2.0.0" }
+}
