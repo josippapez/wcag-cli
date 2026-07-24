@@ -1,7 +1,10 @@
 {
   "name": "@rawwee/wcag-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "git+https://github.com/josippapez/wcag-cli.git" },
+  "bugs": { "url": "https://github.com/josippapez/wcag-cli/issues" },
+  "homepage": "https://github.com/josippapez/wcag-cli#readme",
   "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data. Zero-token-cost alternative to the WCAG MCP.",
   "type": "module",
   "bin": { "wcag": "bin/wcag.js" },
