@@ -1,4 +1,4 @@
-**wcag** v0.1.1
+**wcag** v<normalised>
 
 Command-line lookup for WCAG 2.2 success criteria, techniques and glossary, served from official W3C data bundled with this package and refreshed from w3.org on demand.
 

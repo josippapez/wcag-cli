@@ -1,16 +1,41 @@
 {
   "name": "@rawwee/wcag-cli",
-  "version": "0.1.1",
-  "publishConfig": { "access": "public" },
-  "repository": { "type": "git", "url": "git+https://github.com/josippapez/wcag-cli.git" },
-  "bugs": { "url": "https://github.com/josippapez/wcag-cli/issues" },
+  "version": "0.2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josippapez/wcag-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/josippapez/wcag-cli/issues"
+  },
   "homepage": "https://github.com/josippapez/wcag-cli#readme",
-  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data. Zero-token-cost alternative to the WCAG MCP.",
+  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary \u2014 powered by official W3C data. Zero-token-cost alternative to a WCAG MCP server.",
   "type": "module",
-  "bin": { "wcag": "bin/wcag.js" },
-  "files": ["bin/", "src/", "data/", "scripts/", "README.md"],
-  "keywords": ["wcag", "accessibility", "a11y", "w3c", "cli"],
+  "bin": {
+    "wcag": "bin/wcag.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "data/",
+    "scripts/",
+    "README.md"
+  ],
+  "keywords": [
+    "wcag",
+    "accessibility",
+    "a11y",
+    "w3c",
+    "cli"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=18.0.0" },
-  "scripts": { "test": "node --test" }
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
 }
