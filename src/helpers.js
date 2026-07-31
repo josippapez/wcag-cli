@@ -374,13 +374,13 @@ export async function findTerm(name) {
 }
 
 export async function searchTerms(query) {
-  const searchQuery = query.toLowerCase();
   const terms = await getTerms();
-  return terms.filter(
-    (t) =>
-      t.name.toLowerCase().includes(searchQuery) ||
-      htmlToText(t.definition).toLowerCase().includes(searchQuery)
-  );
+  return rankBy(terms, (t) =>
+    scoreFields(query, [
+      { label: 'Name', weight: 5, text: t.name },
+      { label: 'Definition', weight: 2, text: htmlToText(t.definition) },
+    ])
+  ).map(({ item }) => item);
 }
 
 /**
@@ -432,4 +432,149 @@ export async function getNewInVersion(version) {
 
 export function textResponse(text) {
   return { content: [{ type: 'text', text }] };
+}
+
+// ============================================================================
+// KEYWORD MATCHING
+// ============================================================================
+//
+// The three search commands used `text.toLowerCase().includes(query)`, i.e. one
+// contiguous substring. That failed on ordinary spelling rather than on meaning:
+// "placeholders" missed prose saying "placeholder", "focus keyboard" missed
+// everything while "keyboard focus" found nine, "colour" found nothing where
+// "color" found sixteen, and "screenreader" nothing where "screen reader" found
+// twenty-five. All four are tokenisation problems, so the fix is tokenisation —
+// not embeddings, which would trade a 1 MB offline package for a ~400 MB runtime
+// to answer keyword lookups over 87 criteria.
+//
+// Every step here is deterministic, so the golden harness still pins the output.
+
+// Keep dotted and hyphenated runs whole: "1.4.3" and "aria-live" are single
+// terms, and splitting them would match far too much ("1", "4", "3").
+const TOKEN_RE = /[a-z0-9][a-z0-9.'-]*/g;
+
+// One token in, one or more out. Spelling and compounding variants only — this
+// is not a thesaurus, and it is applied to BOTH the query and the corpus so the
+// two meet in the middle regardless of which spelling either uses.
+const VARIANTS = new Map([
+  ['colour', ['color']],
+  ['colours', ['color']],
+  ['behaviour', ['behavior']],
+  ['screenreader', ['screen', 'reader']],
+  ['screenreaders', ['screen', 'reader']],
+  ['keypress', ['key', 'press']],
+  ['runtime', ['run', 'time']],
+]);
+
+// Query-side only: a term the author may type instead of WCAG's own wording.
+const QUERY_SYNONYMS = new Map([
+  ['alt', ['alt', 'alternative']],
+  ['a11y', ['accessibility']],
+]);
+
+/**
+ * Crude, deliberate suffix stemmer: enough to make plurals and common verb
+ * forms agree, and short enough to reason about. A real Porter stemmer would
+ * conflate more aggressively, which costs precision — and in a compliance tool
+ * a wrong criterion is worse than a missed one.
+ */
+export function stem(token) {
+  if (token.length <= 3) return token;
+  // The guard is on the length of what REMAINS, not of the input: guarding by
+  // input length turned "used" into "us" and "need" into "ne", and under prefix
+  // matching a two-letter stem hits a large slice of the corpus. A rule whose
+  // base comes out too short is skipped and the next rule gets a turn — which is
+  // how "pages" reaches "page" through the plural rule once "es" is rejected.
+  for (const [suffix, minBase, replacement] of [
+    ['ies', 3, 'y'],
+    ['ing', 4, ''],
+    ['ed', 4, ''],
+    ['es', 4, ''],
+    ['s', 3, ''],
+  ]) {
+    if (!token.endsWith(suffix)) continue;
+    const base = token.slice(0, -suffix.length);
+    if (base.length >= minBase) return `${base}${replacement}`;
+  }
+  return token;
+}
+
+/** Lowercase text into a deduplicated set of stemmed tokens. */
+export function tokenise(text) {
+  const out = new Set();
+  for (const raw of String(text ?? '').toLowerCase().match(TOKEN_RE) ?? []) {
+    for (const token of VARIANTS.get(raw) ?? [raw]) out.add(stem(token));
+  }
+  return out;
+}
+
+/** The query as a list of alternative-sets: every entry must match something. */
+export function queryTerms(query) {
+  const terms = [];
+  for (const raw of String(query ?? '').toLowerCase().match(TOKEN_RE) ?? []) {
+    const expanded = VARIANTS.get(raw) ?? QUERY_SYNONYMS.get(raw) ?? [raw];
+    // A multi-token expansion ("screenreader" -> screen, reader) is a
+    // conjunction: both halves must appear. A synonym list is a disjunction.
+    if (VARIANTS.has(raw)) {
+      for (const token of expanded) terms.push([stem(token)]);
+    } else {
+      terms.push(expanded.map(stem));
+    }
+  }
+  return terms;
+}
+
+// A query term matches a corpus token on stem equality or as a prefix, so
+// "keyb" finds "keyboard" and "focus" finds "focusable". Very short terms must
+// match exactly, or "a" would hit everything.
+function termMatches(alternatives, tokens) {
+  return alternatives.some((alt) =>
+    alt.length <= 2 ? tokens.has(alt) : [...tokens].some((token) => token.startsWith(alt))
+  );
+}
+
+/**
+ * Score one record against a query. `fields` is `[{ label, weight, text }]`.
+ *
+ * Returns `{ score, labels }`, or null when any query term is missing from
+ * every field — matching is AND across terms, so word order stops mattering
+ * while an extra word still narrows the result.
+ */
+export function scoreFields(query, fields) {
+  const terms = queryTerms(query);
+  if (terms.length === 0) return null;
+
+  const prepared = fields.map((field) => ({
+    ...field,
+    tokens: tokenise(Array.isArray(field.text) ? field.text.join(' ') : field.text),
+  }));
+
+  let score = 0;
+  const labels = new Set();
+  for (const term of terms) {
+    let found = false;
+    for (const field of prepared) {
+      if (termMatches(term, field.tokens)) {
+        score += field.weight;
+        labels.add(field.label);
+        found = true;
+      }
+    }
+    if (!found) return null;
+  }
+  return { score, labels: [...labels] };
+}
+
+/**
+ * Score every candidate, drop the misses, and sort by score.
+ *
+ * The tie-break is the candidate's original position, so equal scores keep
+ * corpus order and the output stays byte-stable for the golden harness — a
+ * relevance sort that reordered ties run to run would make those tests useless.
+ */
+export function rankBy(items, score) {
+  return items
+    .map((item, index) => ({ item, index, ...(score(item) ?? {}) }))
+    .filter((row) => row.score !== undefined)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
 }

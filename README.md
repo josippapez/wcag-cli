@@ -141,6 +141,34 @@ wcag search-wcag --help
 wcag get-criteria-by-level --help
 ```
 
+## How Searching Works
+
+`search-wcag`, `search-techniques` and `search-glossary` share one matcher. It is
+deliberately **lexical, not semantic** — no embeddings, no model, no network:
+
+- **Word set, not substring.** Every query word must appear somewhere, in any
+  order, so `focus keyboard` and `keyboard focus` return the same criteria. An
+  extra word narrows the result rather than breaking it.
+- **Light stemming.** `placeholders` finds `placeholder`, `pages` finds `page`.
+  The stemmer is intentionally shy: it will not strip a suffix when the remainder
+  would be too short to be meaningful.
+- **Prefix matching.** `keyb` finds `keyboard`, `focus` finds `focusable`. Terms
+  of one or two characters must match exactly.
+- **Spelling and compound folding.** `colour`/`color` and
+  `screenreader`/`screen reader` are treated as the same query, applied to both
+  the query and the corpus.
+- **Whole terms stay whole.** `1.4.3` and `aria-labelledby` are single tokens and
+  are not split into their parts. Criterion numbers are searchable, so
+  `search-wcag 1.4.3` finds that criterion and `search-wcag 2.4` finds all
+  thirteen criteria under guideline 2.4.
+- **Relevance ranked.** A hit in a criterion's name outranks the same word buried
+  in an example. Equal scores keep dataset order, so output is byte-stable.
+
+It has no idea what words *mean*. `alt text` will not find `text alternative`
+by concept — only the small folding list above bridges wording differences. For
+a corpus of 87 criteria and about a megabyte of prose, that trade buys a
+zero-dependency, offline, deterministic tool, and the results stay explainable.
+
 ## Data Freshness
 
 The CLI never depends on the network to answer a question, but it will quietly keep itself current when it can.

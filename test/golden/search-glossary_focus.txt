@@ -1,14 +1,14 @@
 # Glossary Search Results for "focus" (5 found)
 
+**focus indicator**
+pixels that are changed to visually indicate when a user interface component is in a focused state
+
+---
+
 **changes of context**
 major changes that, if made without user awareness, can disorient users who are not able to view the entire page simultaneously
 
 Changes in context in...
-
----
-
-**focus indicator**
-pixels that are changed to visually indicate when a user interface component is in a focused state
 
 ---
 

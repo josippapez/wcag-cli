@@ -1,10 +1,5 @@
 # Search Results for "keyboard" (10 found)
 
-**1.4.13 Content on Hover or Focus** (Level AA)
-Where receiving and then removing pointer hover or keyboard focus triggers additional content to become visible and then hidden, the following are tru...
-
----
-
 **2.1.1 Keyboard** (Level A)
 All functionality of the content is operable through a keyboard interface without requiring specific timings for individual keystrokes, except where t...
 
@@ -17,6 +12,11 @@ If keyboard focus can be moved to a component of the page using a keyboard inter
 
 **2.1.3 Keyboard (No Exception)** (Level AAA)
 All functionality of the content is operable through a keyboard interface without requiring specific timings for individual keystrokes.
+
+---
+
+**1.4.13 Content on Hover or Focus** (Level AA)
+Where receiving and then removing pointer hover or keyboard focus triggers additional content to become visible and then hidden, the following are tru...
 
 ---
 

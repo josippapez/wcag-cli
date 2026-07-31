@@ -41,6 +41,8 @@ import {
   getNewInVersion,
   textResponse,
   getUnderstandingLocal,
+  scoreFields,
+  rankBy,
 } from './helpers.js';
 
 const NOT_FOUND_HINT = 'Use format like "1.1.1" or "2.4.7".';
@@ -365,48 +367,37 @@ const searchWcag = {
     required: ['query'],
   },
   handler: async (args) => {
-    const query = args.query.toLowerCase();
     const allCriteria = await getAllSuccessCriteria({ level: args.level });
 
-    // Which parts of a criterion matched, so a hit in Examples is not presented
-    // as though the normative text said it.
-    const sections = (sc) => {
-      const hit = [];
-      if (
-        sc.handle.toLowerCase().includes(query) ||
-        sc.title.toLowerCase().includes(query) ||
-        stripHtml(sc.content).toLowerCase().includes(query)
-      ) {
-        hit.push('Criterion');
-      }
-      return hit;
-    };
-
-    const understandingSections = async (sc) => {
+    const understandingFields = async (sc) => {
       const u = await getUnderstandingLocal(sc.num);
       if (!u) return [];
       return [
-        ['In Brief', u.brief],
-        ['Intent', u.intent],
-        ['Benefits', u.benefits],
-        ['Examples', u.examples],
-      ]
-        .filter(([, value]) =>
-          (Array.isArray(value) ? value : [value]).some(
-            (v) => typeof v === 'string' && v.toLowerCase().includes(query)
-          )
-        )
-        .map(([label]) => label);
+        { label: 'In Brief', weight: 1, text: Object.values(u.brief ?? {}).join(' ') },
+        { label: 'Intent', weight: 1, text: u.intent },
+        { label: 'Benefits', weight: 1, text: u.benefits },
+        { label: 'Examples', weight: 1, text: u.examples },
+      ];
     };
 
-    const matches = [];
-    for (const sc of allCriteria) {
-      const hit = sections(sc);
-      if (args.understanding) hit.push(...(await understandingSections(sc)));
-      if (hit.length > 0) matches.push({ sc, hit });
+    // Weighted so a term in the criterion's own handle outranks the same term
+    // buried in an example, which is what makes ranking worth having at all.
+    const scored = [];
+    for (const [index, sc] of allCriteria.entries()) {
+      const fields = [
+        // The number is what people actually type when they know the criterion,
+        // and it lived in no searched field: `search-wcag 1.4.3` found nothing.
+        { label: 'Criterion', weight: 6, text: sc.num },
+        { label: 'Criterion', weight: 5, text: sc.handle },
+        { label: 'Criterion', weight: 3, text: `${sc.title} ${stripHtml(sc.content)}` },
+        ...(args.understanding ? await understandingFields(sc) : []),
+      ];
+      const hit = scoreFields(args.query, fields);
+      if (hit) scored.push({ sc, index, ...hit });
     }
+    scored.sort((a, b) => b.score - a.score || a.index - b.index);
 
-    if (matches.length === 0) {
+    if (scored.length === 0) {
       const hint = args.understanding
         ? ''
         : ' Try --understanding to search the Intent, Benefits and Examples prose as well.';
@@ -415,15 +406,15 @@ const searchWcag = {
       );
     }
 
-    const output = matches
-      .map(({ sc, hit }) => {
-        const where = args.understanding ? `\nmatched in: ${hit.join(', ')}` : '';
+    const output = scored
+      .map(({ sc, labels }) => {
+        const where = args.understanding ? `\nmatched in: ${labels.join(', ')}` : '';
         return `**${sc.num} ${sc.handle}** (${levelTag(sc)})\n${truncate(sc.title, 150)}${where}`;
       })
       .join('\n\n---\n\n');
 
     return textResponse(
-      `# Search Results for "${args.query}" (${matches.length} found)\n\n${output}`
+      `# Search Results for "${args.query}" (${scored.length} found)\n\n${output}`
     );
   },
 };
@@ -709,11 +700,13 @@ const searchTechniques = {
     required: ['query'],
   },
   handler: async (args) => {
-    const query = args.query.toLowerCase();
     const all = await getAllTechniques();
-    const techniques = all.filter(
-      (t) => t.title.toLowerCase().includes(query) || t.id.toLowerCase().includes(query)
-    );
+    const techniques = rankBy(all, (t) =>
+      scoreFields(args.query, [
+        { label: 'Id', weight: 5, text: t.id },
+        { label: 'Title', weight: 3, text: t.title },
+      ])
+    ).map(({ item }) => item);
 
     if (techniques.length === 0) {
       return textResponse(`No techniques found matching "${args.query}".`);

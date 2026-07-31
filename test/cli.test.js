@@ -147,3 +147,31 @@ test('search-wcag --understanding keeps the multi-word query joined', () => {
   const out = run(['search-wcag', 'target', 'size', '--understanding']);
   assert.match(out, /Search Results for "target size"/);
 });
+
+// Every one of these returned zero results under the old substring search.
+test('search-wcag matches on words, not one contiguous substring', () => {
+  const forward = run(['search-wcag', 'keyboard', 'focus', '--understanding']);
+  const reversed = run(['search-wcag', 'focus', 'keyboard', '--understanding']);
+  const count = (out) => out.match(/\((\d+) found\)/)?.[1];
+  assert.equal(count(forward), count(reversed), 'word order must not change recall');
+
+  assert.match(run(['search-wcag', 'placeholders', '--understanding']), /found\)/);
+  assert.match(run(['search-wcag', 'colour', '--understanding']), /found\)/);
+  assert.match(run(['search-wcag', 'screenreader', '--understanding']), /found\)/);
+});
+
+test('search-wcag ranks a handle match above a prose mention', () => {
+  const out = run(['search-wcag', 'keyboard']);
+  const first = out.match(/^\*\*([0-9.]+) /m)?.[1];
+  assert.equal(first, '2.1.1', 'the criterion actually named Keyboard should lead');
+});
+
+test('search-glossary is word-order independent too', () => {
+  // The header echoes the query verbatim, so compare the matched terms rather
+  // than the whole output.
+  const terms = (out) => out.match(/^\*\*.+\*\*$/gm);
+  assert.deepEqual(
+    terms(run(['search-glossary', 'contrast', 'ratio'])),
+    terms(run(['search-glossary', 'ratio', 'contrast']))
+  );
+});

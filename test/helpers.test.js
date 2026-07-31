@@ -12,6 +12,10 @@ import {
   getMeta,
   getUnderstanding,
   getUnderstandingLocal,
+  stem,
+  tokenise,
+  scoreFields,
+  rankBy,
   getAllTechniques,
   findSuccessCriterion,
   findPrinciple,
@@ -442,4 +446,58 @@ test('getUnderstandingLocal memoises per criterion', async () => {
   const a = getUnderstandingLocal('1.4.3');
   const b = getUnderstandingLocal('1.4.3');
   assert.equal(a, b, 'same in-flight promise, so one read');
+});
+
+// --- keyword matching -------------------------------------------------------
+
+test('stem guards on the REMAINING length, so short words survive', () => {
+  // The first cut guarded on input length and produced "us" from "used" and
+  // "ne" from "need"; under prefix matching a two-letter stem matches a large
+  // slice of the corpus, so these are the regression cases.
+  assert.equal(stem('used'), 'used');
+  assert.equal(stem('need'), 'need');
+  assert.equal(stem('placeholders'), 'placeholder');
+  assert.equal(stem('placeholder'), 'placeholder');
+  assert.equal(stem('focusing'), 'focus');
+  assert.equal(stem('policies'), 'policy');
+  assert.equal(stem('pages'), 'page');
+});
+
+test('tokenise keeps dotted and hyphenated terms whole', () => {
+  const tokens = tokenise('See 1.4.3 and aria-live regions');
+  assert.ok(tokens.has('1.4.3'), 'a criterion number must not split into 1, 4, 3');
+  assert.ok(tokens.has('aria-live'));
+});
+
+test('tokenise folds spelling and compound variants', () => {
+  assert.deepEqual([...tokenise('colour')], ['color']);
+  assert.deepEqual([...tokenise('colours')], ['color']);
+  assert.deepEqual([...tokenise('screenreader')].sort(), ['reader', 'screen']);
+});
+
+test('scoreFields is AND across terms, so word order stops mattering', () => {
+  const fields = [{ label: 'Text', weight: 1, text: 'Focus order follows the keyboard sequence' }];
+  assert.ok(scoreFields('keyboard focus', fields));
+  assert.ok(scoreFields('focus keyboard', fields), 'reversed order must match too');
+  assert.equal(scoreFields('keyboard elephant', fields), null, 'every term must appear');
+});
+
+test('scoreFields weights fields and reports which ones matched', () => {
+  const strong = scoreFields('contrast', [
+    { label: 'Name', weight: 5, text: 'contrast ratio' },
+    { label: 'Body', weight: 1, text: 'unrelated' },
+  ]);
+  const weak = scoreFields('contrast', [
+    { label: 'Name', weight: 5, text: 'unrelated' },
+    { label: 'Body', weight: 1, text: 'mentions contrast in passing' },
+  ]);
+  assert.ok(strong.score > weak.score);
+  assert.deepEqual(strong.labels, ['Name']);
+  assert.deepEqual(weak.labels, ['Body']);
+});
+
+test('rankBy sorts by score and breaks ties on corpus order', () => {
+  const items = [{ n: 'a' }, { n: 'b' }, { n: 'c' }];
+  const ranked = rankBy(items, (i) => (i.n === 'c' ? { score: 9 } : { score: 1 }));
+  assert.deepEqual(ranked.map((r) => r.item.n), ['c', 'a', 'b'], 'ties keep original order');
 });
