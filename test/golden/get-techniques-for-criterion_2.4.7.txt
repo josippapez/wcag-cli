@@ -1,0 +1,17 @@
+# Techniques for 2.4.7 Focus Visible
+
+## Sufficient Techniques
+
+- **G149**: Using user interface components that are highlighted by the user agent when they receive focus
+- **C15**: Using CSS to change the presentation of a user interface component when it receives focus
+- **G165**: Using the default focus indicator for the platform so that high visibility default focus indicators will carry over
+- **G195**: Using an author-supplied, visible focus indicator
+- **C40**: Creating a two-color focus indicator to ensure sufficient contrast with all components
+- **C45**: Using CSS :focus-visible to provide keyboard focus indication
+- **SCR31**: Using script to change the background color or border of the element with focus
+
+## Failure Techniques
+
+- **F55**: Failure of Success Criteria 2.1.1, 2.4.7, 2.4.13, and 3.2.1 due to using script to remove focus when focus is received
+- **F78**: Failure of Success Criterion 1.4.11, 2.4.7 and 2.4.13 due to styling element outlines and borders in a way that removes or renders non-visible the visual focus indicator
+

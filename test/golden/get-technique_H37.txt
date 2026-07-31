@@ -1,0 +1,13 @@
+# H37: Using alt attributes on img elements
+
+**Technology:** html
+**Types:** sufficient
+**Applies to:** 1 success criteria
+
+## Related Success Criteria
+
+- **1.1.1** Non-text Content (Level A)
+
+## Links
+
+- [Full Technique Documentation](https://www.w3.org/WAI/WCAG22/Techniques/html/H37)

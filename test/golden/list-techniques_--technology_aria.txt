@@ -1,0 +1,31 @@
+# WCAG Techniques (26 found)
+
+## ARIA (26)
+
+- **ARIA1**: Using the aria-describedby property to provide a descriptive label for user interface controls
+- **ARIA10**: Using aria-labelledby to provide a text alternative for non-text content
+- **ARIA11**: Using ARIA landmarks to identify regions of a page
+- **ARIA12**: Using role=heading to identify headings
+- **ARIA13**: Using aria-labelledby to name regions and landmarks
+- **ARIA14**: Using aria-label to provide an accessible name where a visible label cannot be used
+- **ARIA15**: Using aria-describedby to provide descriptions of images
+- **ARIA16**: Using aria-labelledby to provide a name for user interface controls
+- **ARIA17**: Using grouping roles to identify related form controls
+- **ARIA18**: Using aria-alertdialog to Identify Errors
+- **ARIA19**: Using ARIA role=alert or Live Regions to Identify Errors
+- **ARIA2**: Identifying a required field with the aria-required property
+- **ARIA20**: Using the region role to identify a region of the page
+- **ARIA21**: Using aria-invalid to Indicate An Error Field
+- **ARIA22**: Using role=status to present status messages
+- **ARIA23**: Using role=log to identify sequential information updates
+- **ARIA24**: Semantically identifying a font icon with role="img"
+- **ARIA25**: Using an ARIA live region to convey the status of a progress bar
+- **ARIA26**: Using aria-current to identify the current item in a set
+- **ARIA27**: Using ariaNotify to convey the status of a progress bar
+- **ARIA4**: Using a WAI-ARIA role to expose the role of a user interface component
+- **ARIA5**: Using WAI-ARIA state and property attributes to expose the state of a user interface component
+- **ARIA6**: Using aria-label to provide labels for objects
+- **ARIA7**: Using aria-labelledby for link purpose
+- **ARIA8**: Using aria-label for link purpose
+- **ARIA9**: Using aria-labelledby to concatenate a label from several text nodes
+

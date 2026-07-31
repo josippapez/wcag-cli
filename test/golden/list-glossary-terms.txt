@@ -1,0 +1,169 @@
+# WCAG 2.2 Glossary (101 terms)
+
+## A
+
+- **abbreviation**
+- **accessibility supported**
+- **alternative for time-based media**
+- **ambiguous to users in general**
+- **ASCII art**
+- **assistive technology**
+- **audio**
+- **audio description**
+- **audio-only**
+
+## B
+
+- **blinking**
+- **blocks of text**
+
+## C
+
+- **CAPTCHA**
+- **captions**
+- **changes of context**
+- **cognitive function test**
+- **conformance**
+- **conforming alternate version**
+- **content**
+- **context-sensitive help**
+- **contrast ratio**
+- **correct reading sequence**
+- **CSS pixel**
+
+## D
+
+- **down-event**
+- **dragging movement**
+
+## E
+
+- **emergency**
+- **essential**
+- **extended audio description**
+
+## F
+
+- **flash**
+- **focus indicator**
+- **functionality**
+
+## G
+
+- **general flash and red flash thresholds**
+
+## H
+
+- **human language**
+
+## I
+
+- **idiom**
+- **image of text**
+- **informative**
+- **input error**
+
+## J
+
+- **jargon**
+
+## K
+
+- **keyboard interface**
+- **keyboard shortcut**
+
+## L
+
+- **label**
+- **large scale**
+- **legal commitments**
+- **link purpose**
+- **live**
+- **lower secondary education level**
+
+## M
+
+- **mechanism**
+- **media alternative for text**
+- **minimum bounding box**
+- **motion animation**
+
+## N
+
+- **name**
+- **navigated sequentially**
+- **non-text content**
+- **normative**
+
+## O
+
+- **on a full-screen window**
+
+## P
+
+- **paused**
+- **perimeter**
+- **pointer input**
+- **prerecorded**
+- **presentation**
+- **primary education level**
+- **process**
+- **programmatically determined**
+- **programmatically determined link context**
+- **programmatically set**
+- **pure decoration**
+
+## R
+
+- **real-time event**
+- **region**
+- **relationships**
+- **relative luminance**
+- **relied upon**
+- **role**
+
+## S
+
+- **same functionality**
+- **same relative order**
+- **satisfies a success criterion**
+- **section**
+- **set of web pages**
+- **sign language**
+- **sign language interpretation**
+- **single pointer**
+- **specific sensory experience**
+- **state**
+- **status message**
+- **structure**
+- **style property**
+- **supplemental content**
+- **synchronized media**
+
+## T
+
+- **target**
+- **technology**
+- **text**
+- **text alternative**
+
+## U
+
+- **up-event**
+- **used in an unusual or restricted way**
+- **user agent**
+- **user inactivity**
+- **user interface component**
+- **user-controllable**
+
+## V
+
+- **video**
+- **video-only**
+- **viewport**
+- **visually customized**
+
+## W
+
+- **web page**
+

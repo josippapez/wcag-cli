@@ -1,0 +1,8 @@
+# WCAG 2.2 Success Criteria by Level
+
+Total: 87 success criteria
+
+- **Level A**: 31
+- **Level AA**: 24
+- **Level AAA**: 31
+- **Removed in WCAG 2.2**: 1

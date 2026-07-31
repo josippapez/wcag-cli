@@ -1,0 +1,17 @@
+# WCAG 2.2 Principles
+
+**1. Perceivable**
+Information and user interface components must be presentable to users in ways they can perceive.
+URL: https://www.w3.org/TR/WCAG22/#perceivable
+
+**2. Operable**
+User interface components and navigation must be operable.
+URL: https://www.w3.org/TR/WCAG22/#operable
+
+**3. Understandable**
+Information and the operation of the user interface must be understandable.
+URL: https://www.w3.org/TR/WCAG22/#understandable
+
+**4. Robust**
+Content must be robust enough that it can be interpreted by a wide variety of user agents, including assistive technologies.
+URL: https://www.w3.org/TR/WCAG22/#robust

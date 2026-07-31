@@ -1,0 +1,51 @@
+# Guideline 1.4: Distinguishable
+
+**Principle:** 1 Perceivable
+
+## Description
+
+Make it easier for users to see and hear content including separating foreground from background.
+
+**URL:** https://www.w3.org/TR/WCAG22/#distinguishable
+
+## Success Criteria (13)
+
+### 1.4.1 Use of Color (Level A)
+Color is not used as the only visual means of conveying information, indicating an action, prompting a response, or distinguishing a visual element.
+
+### 1.4.2 Audio Control (Level A)
+If any audio on a web page plays automatically for more than 3 seconds, either a mechanism is available to pause or stop the audio, or a mechanism is available to control audio volume independently fr...
+
+### 1.4.3 Contrast (Minimum) (Level AA)
+The visual presentation of text and images of text has a contrast ratio of at least 4.5:1, except for the following:
+
+### 1.4.4 Resize Text (Level AA)
+Except for captions and images of text, text can be resized without assistive technology up to 200 percent without loss of content or functionality.
+
+### 1.4.5 Images of Text (Level AA)
+If the technologies being used can achieve the visual presentation, text is used to convey information rather than images of text except for the following:
+
+### 1.4.6 Contrast (Enhanced) (Level AAA)
+The visual presentation of text and images of text has a contrast ratio of at least 7:1, except for the following:
+
+### 1.4.7 Low or No Background Audio (Level AAA)
+For prerecorded audio-only content that (1) contains primarily speech in the foreground, (2) is not an audio CAPTCHA or audio logo, and (3) is not vocalization intended to be primarily musical express...
+
+### 1.4.8 Visual Presentation (Level AAA)
+For the visual presentation of blocks of text, a mechanism is available to achieve the following:
+
+### 1.4.9 Images of Text (No Exception) (Level AAA)
+Images of text are only used for pure decoration or where a particular presentation of text is essential to the information being conveyed.
+
+### 1.4.10 Reflow (Level AA)
+Content can be presented without loss of information or functionality, and without requiring scrolling in two dimensions for:
+
+### 1.4.11 Non-text Contrast (Level AA)
+The visual presentation of the following have a contrast ratio of at least 3:1 against adjacent color(s):
+
+### 1.4.12 Text Spacing (Level AA)
+In content implemented using markup languages that support the following text style properties, no loss of content or functionality occurs by setting all of the following and by changing no other styl...
+
+### 1.4.13 Content on Hover or Focus (Level AA)
+Where receiving and then removing pointer hover or keyboard focus triggers additional content to become visible and then hidden, the following are true:
+

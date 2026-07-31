@@ -1,0 +1,11 @@
+# Technique Search Results for "contrast" (9 found)
+
+**G183** (general): Using a contrast ratio of 3:1 with surrounding text and providing additional visual cues on hover for links or controls where color alone is used to identify them
+**G18** (general): Ensuring that a contrast ratio of at least 4.5:1 exists between text (and images of text) and background behind the text
+**G174** (general): Providing a control with a sufficient contrast ratio that allows users to switch to a presentation that uses sufficient contrast
+**G145** (general): Ensuring that a contrast ratio of at least 3:1 exists between text (and images of text) and background behind the text
+**F83** (failures): Failure of Success Criterion 1.4.3 and 1.4.6 due to using background images that do not provide sufficient contrast with foreground text (or images of text)
+**G17** (general): Ensuring that a contrast ratio of at least 7:1 exists between text (and images of text) and background behind the text
+**C40** (css): Creating a two-color focus indicator to ensure sufficient contrast with all components
+**G207** (general): Ensuring that a contrast ratio of 3:1 is provided for icons
+**G209** (general): Provide sufficient contrast at the boundaries between adjoining colors

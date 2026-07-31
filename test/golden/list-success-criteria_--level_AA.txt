@@ -1,0 +1,75 @@
+# WCAG 2.2 Success Criteria (24 found)
+
+Filters: Level: AA
+
+**1.2.4 Captions (Live)** (Level AA)
+Guideline: 1.2 Time-based Media
+
+**1.2.5 Audio Description (Prerecorded)** (Level AA)
+Guideline: 1.2 Time-based Media
+
+**1.3.4 Orientation** (Level AA)
+Guideline: 1.3 Adaptable
+
+**1.3.5 Identify Input Purpose** (Level AA)
+Guideline: 1.3 Adaptable
+
+**1.4.3 Contrast (Minimum)** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.4 Resize Text** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.5 Images of Text** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.10 Reflow** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.11 Non-text Contrast** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.12 Text Spacing** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**1.4.13 Content on Hover or Focus** (Level AA)
+Guideline: 1.4 Distinguishable
+
+**2.4.5 Multiple Ways** (Level AA)
+Guideline: 2.4 Navigable
+
+**2.4.6 Headings and Labels** (Level AA)
+Guideline: 2.4 Navigable
+
+**2.4.7 Focus Visible** (Level AA)
+Guideline: 2.4 Navigable
+
+**2.4.11 Focus Not Obscured (Minimum)** (Level AA)
+Guideline: 2.4 Navigable
+
+**2.5.7 Dragging Movements** (Level AA)
+Guideline: 2.5 Input Modalities
+
+**2.5.8 Target Size (Minimum)** (Level AA)
+Guideline: 2.5 Input Modalities
+
+**3.1.2 Language of Parts** (Level AA)
+Guideline: 3.1 Readable
+
+**3.2.3 Consistent Navigation** (Level AA)
+Guideline: 3.2 Predictable
+
+**3.2.4 Consistent Identification** (Level AA)
+Guideline: 3.2 Predictable
+
+**3.3.3 Error Suggestion** (Level AA)
+Guideline: 3.3 Input Assistance
+
+**3.3.4 Error Prevention (Legal, Financial, Data)** (Level AA)
+Guideline: 3.3 Input Assistance
+
+**3.3.8 Accessible Authentication (Minimum)** (Level AA)
+Guideline: 3.3 Input Assistance
+
+**4.1.3 Status Messages** (Level AA)
+Guideline: 4.1 Compatible

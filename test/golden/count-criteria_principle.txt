@@ -1,0 +1,8 @@
+# WCAG 2.2 Success Criteria by Principle
+
+Total: 87 success criteria
+
+- **1. Perceivable**: 29
+- **2. Operable**: 34
+- **3. Understandable**: 21
+- **4. Robust**: 3

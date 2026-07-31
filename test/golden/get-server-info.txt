@@ -1,0 +1,34 @@
+**wcag** v0.1.1
+
+Command-line lookup for WCAG 2.2 success criteria, techniques and glossary, served from official W3C data bundled with this package and refreshed from w3.org on demand.
+
+## Dataset
+
+- **Source:** https://www.w3.org/WAI/WCAG22/wcag.json
+- **ETag:** <normalised>
+- **Last-Modified:** <normalised>
+- **Fetched:** <normalised>
+- **SHA-256:** <normalised>
+- **Understanding docs:** parsed from the official W3C Understanding HTML pages
+- **WCAG version:** 2.2
+
+## Cache
+
+- **Directory:** <normalised>
+- **Refresh interval:** 7 days
+- **Force a refresh:** `wcag <command> --refresh`
+- **Stay offline:** set `WCAG_CLI_NO_NETWORK=1`
+
+## Statistics
+
+- **Principles:** 4
+- **Guidelines:** 13
+- **Success Criteria:** 87 (Level A: 31, AA: 24, AAA: 31, Removed in WCAG 2.2: 1)
+- **Techniques:** 422
+- **Glossary Terms:** 101
+
+## Attribution
+
+WCAG data from the [W3C WCAG Repository](https://github.com/w3c/wcag) ([W3C Document License](https://www.w3.org/copyright/document-license/)).
+
+This software includes material copied from or derived from Web Content Accessibility Guidelines (WCAG) 2.2. Copyright © 2023 W3C® (MIT, ERCIM, Keio, Beihang).

@@ -1,0 +1,96 @@
+# Complete Context: 1.1.1 Non-text Content
+
+## Overview
+
+**Level:** A
+**Principle:** 1 Perceivable
+**Guideline:** 1.1 Text Alternatives
+**WCAG Versions:** 2.0, 2.1, 2.2
+
+All non-text content that is presented to the user has a text alternative that serves the equivalent purpose, except for the situations listed below.
+
+## In Brief
+
+**Goal:** Non-text information is available to more people.
+**What to do:** Create a text alternative for visual and auditory content.
+**Why it's important:** People who can’t fully see or hear content can understand it.
+
+## Details
+
+- **Controls, Input:** If non-text content is a control or accepts user input, then it has a name that describes its purpose. (Refer to Success Criterion 4.1.2 for additional requirements for controls and content that accepts user input.)
+- **Time-Based Media:** If non-text content is time-based media, then text alternatives at least provide descriptive identification of the non-text content. (Refer to Guideline 1.2 for additional requirements for media.)
+- **Test:** If non-text content is a test or exercise that would be invalid if presented in text, then text alternatives at least provide descriptive identification of the non-text content.
+- **Sensory:** If non-text content is primarily intended to create a specific sensory experience, then text alternatives at least provide descriptive identification of the non-text content.
+- **CAPTCHA:** If the purpose of non-text content is to confirm that content is being accessed by a person rather than a computer, then text alternatives that identify and describe the purpose of the non-text content are provided, and alternative forms of CAPTCHA using output modes for different types of sensory perception are provided to accommodate different disabilities.
+- **Decoration, Formatting, Invisible:** If non-text content is pure decoration, is used only for visual formatting, or is not presented to users, then it is implemented in a way that it can be ignored by assistive technology.
+
+## Techniques Summary
+
+- **Sufficient:** 28 techniques
+- **Advisory:** 1 technique
+- **Failure:** 10 techniques
+
+## Sufficient Techniques (28)
+
+- **G94** (general): Providing short text alternative for non-text content that serves the same purpose and presents the same information as the non-text content
+- **ARIA6** (aria): Using aria-label to provide labels for objects
+- **ARIA10** (aria): Using aria-labelledby to provide a text alternative for non-text content
+- **G196** (general): Using a text alternative on one item within a group of images that describes all items in the group
+- **H2** (html): Combining adjacent image and text links for the same resource
+- **H37** (html): Using alt attributes on img elements
+- **H53** (html): Using the body of the object element
+- **H86** (html): Providing text alternatives for emojis, emoticons, ASCII art, and leetspeak
+- **PDF1** (pdf): Applying text alternatives to images with the Alt entry in PDF documents
+- **G95** (general): Providing short text alternatives that provide a brief description of the non-text content
+- **ARIA15** (aria): Using aria-describedby to provide descriptions of images
+- **G73** (general): Providing a long description in another location with a link to it that is immediately adjacent to the non-text content
+- **G74** (general): Providing a long description in text near the non-text content, with a reference to the location of the long description in the short description
+- **G92** (general): Providing long description for non-text content that serves the same purpose and presents the same information
+- **G82** (general): Providing a text alternative that identifies the purpose of interactive non-text content
+- **ARIA9** (aria): Using aria-labelledby to concatenate a label from several text nodes
+- **H24** (html): Providing text alternatives for the area elements of image maps
+- **H30** (html): Providing link text that describes the purpose of a link for anchor elements
+- **H36** (html): Using alt attributes on images used as submit buttons
+- **H44** (html): Using label elements to associate text labels with form controls
+- **H65** (html): Using the title attribute to identify form controls when the label element cannot be used
+- **G68** (general): Providing a short text alternative that describes the purpose of live audio-only and live video-only content
+- **G100** (general): Providing a short text alternative which is the accepted name or a descriptive name of the non-text content
+- **G143** (general): Providing a text alternative that describes the purpose of the CAPTCHA
+- **G144** (general): Ensuring that the web page contains another CAPTCHA serving the same purpose using a different modality
+- **C9** (css): Using CSS to include decorative images
+- **H67** (html): Using null alt text and no title attribute on img elements for images that assistive technology should ignore
+- **PDF4** (pdf): Hiding decorative images with the Artifact tag in PDF documents
+
+## Advisory Techniques (1)
+
+- **C18** (css): Using CSS margin and padding rules instead of spacer images for layout design
+
+## Failure Techniques (10)
+
+- **F3** (failures): Failure of Success Criterion 1.1.1 due to conveying information exclusively using CSS background images
+- **F13** (failures): Failure of Success Criterion 1.1.1 and 1.4.1 due to having a text alternative that does not include information that is conveyed by color differences in the image
+- **F20** (failures): Failure of Success Criterion 1.1.1 and 4.1.2 due to not updating text alternatives when changes to non-text content occur
+- **F30** (failures): Failure of Success Criterion 1.1.1 and 1.2.1 due to using text alternatives that are not alternatives (e.g., filenames or placeholder text)
+- **F38** (failures): Failure of Success Criterion 1.1.1 due to not marking up decorative images in HTML in a way that allows assistive technology to ignore them
+- **F39** (failures): Failure of Success Criterion 1.1.1 due to providing a text alternative that is not null (e.g., alt="spacer" or alt="image") for images that should be ignored by assistive technology
+- **F65** (failures): Failure of Success Criterion 1.1.1 due to omitting the alt attribute or text alternative on img elements, area elements, and input elements of type "image"
+- **F67** (failures): Failure of Success Criterion 1.1.1 and 1.2.1 due to providing long descriptions for non-text content that does not serve the same purpose or does not present the same information
+- **F71** (failures): Failure of Success Criterion 1.1.1 due to using text look-alikes to represent text without providing a text alternative
+- **F72** (failures): Failure of Success Criterion 1.1.1 due to using ASCII art without providing a text alternative
+
+## Related Glossary Terms (8)
+
+- **non-text content** — any content that is not a sequence of characters that can be programmatically determined or where the sequence is not expressing something in human la...
+- **text alternative** — Text that is programmatically associated with non-text content or referred to from text that is programmatically associated with non-text content. Pro...
+- **name** — text by which software can identify a component within web content to the user
+- **text** — sequence of characters that can be programmatically determined, where the sequence is expressing something in human language
+- **specific sensory experience** — a sensory experience that is not purely decorative and does not primarily convey important information or perform a function
+- **CAPTCHA** — initialism for "Completely Automated Public Turing test to tell Computers and Humans Apart"
+- **pure decoration** — serving only an aesthetic purpose, providing no information, and having no functionality
+- **assistive technology** — hardware and/or software that acts as a user agent, or along with a mainstream user agent, to provide functionality to meet the requirements of users ...
+
+## Links
+
+- [WCAG Specification](https://www.w3.org/TR/WCAG22/#non-text-content)
+- [Understanding 1.1.1](https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html)
+- [How to Meet 1.1.1](https://www.w3.org/WAI/WCAG22/quickref/#non-text-content)

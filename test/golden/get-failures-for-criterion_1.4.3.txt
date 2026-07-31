@@ -1,0 +1,6 @@
+# Failure Techniques for 1.4.3 Contrast (Minimum)
+
+These are common mistakes that would cause this success criterion to fail:
+
+- **F24**: Failure of Success Criterion 1.4.3, 1.4.6 and 1.4.8 due to specifying foreground colors without specifying background colors or vice versa
+- **F83**: Failure of Success Criterion 1.4.3 and 1.4.6 due to using background images that do not provide sufficient contrast with foreground text (or images of text)

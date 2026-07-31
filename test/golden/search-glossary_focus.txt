@@ -1,0 +1,28 @@
+# Glossary Search Results for "focus" (5 found)
+
+**changes of context**
+major changes that, if made without user awareness, can disorient users who are not able to view the entire page simultaneously
+
+Changes in context in...
+
+---
+
+**focus indicator**
+pixels that are changed to visually indicate when a user interface component is in a focused state
+
+---
+
+**navigated sequentially**
+navigated in the order defined for advancing focus (from one element to the next) using a keyboard interface
+
+---
+
+**programmatically determined link context**
+additional information that can be programmatically determined from relationships with a link, combined with the link text, and presented to users in ...
+
+---
+
+**state**
+dynamic property expressing characteristics of a user interface component that may change in response to user action or automated processes
+
+States do...
