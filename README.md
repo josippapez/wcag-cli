@@ -60,6 +60,13 @@ wcag whats-new-in-wcag22
 
 - **`search-wcag`** — Searches WCAG 2.2 success criteria by keyword in titles and descriptions.
   - Example: `wcag search-wcag "keyboard"`
+  - `--understanding` also searches the Understanding prose — In Brief, Intent,
+    Benefits and Examples — and reports which section matched. Much of WCAG's
+    practical guidance lives there rather than in the normative text, so a term
+    like `placeholder` appears in no criterion title yet is discussed in several
+    Intents. Bulk reads are always local (bundled snapshot plus existing cache),
+    never a fetch, so one search cannot turn into 87 requests.
+  - Example: `wcag search-wcag "placeholder" --understanding`
 
 - **`get-criteria-by-level`** — Gets all success criteria for a specific conformance level. Optionally includes lower levels (e.g., AA includes A).
   - Example: `wcag get-criteria-by-level AA --include_lower`
@@ -111,9 +118,12 @@ The CLI follows a simple argument convention:
 
 Flag order does not matter for the common cases: `wcag get-criterion --normative 1.4.3` and `wcag get-criterion 1.4.3 --normative` are equivalent.
 
-**Known limitations**:
-- A command's own boolean flag wedged *between the words* of one multi-word positional reorders them — `wcag get-criterion contrast --normative ratio` looks up `ratio contrast`. Put the flag before or after the whole value, not inside it. (The global `--refresh` is unaffected.)
-- Positional values starting with `-` or `--` are parsed as flags, not positionals, and are not supported.
+Flag *position* does not matter either. A boolean flag written between the words
+of a multi-word value is put back where you typed it, so
+`wcag search-wcag contrast --understanding ratio` searches `contrast ratio`.
+
+**Known limitation**: positional values starting with `-` or `--` are parsed as
+flags, not positionals, and are not supported.
 
 ### Getting Help
 

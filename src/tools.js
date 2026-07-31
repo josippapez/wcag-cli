@@ -40,6 +40,7 @@ import {
   relatedTerms,
   getNewInVersion,
   textResponse,
+  getUnderstandingLocal,
 } from './helpers.js';
 
 const NOT_FOUND_HINT = 'Use format like "1.1.1" or "2.4.7".';
@@ -344,7 +345,8 @@ const getGuideline = {
 
 const searchWcag = {
   name: 'search-wcag',
-  description: 'Searches WCAG 2.2 success criteria by keyword in titles and descriptions.',
+  description:
+    'Searches WCAG 2.2 success criteria by keyword in titles and descriptions. Pass --understanding to also search the Understanding prose (intent, benefits, examples).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -354,6 +356,11 @@ const searchWcag = {
         description: 'Optional: Filter results by conformance level',
         enum: ['A', 'AA', 'AAA'],
       },
+      understanding: {
+        type: 'boolean',
+        description:
+          'Also search the Understanding prose — intent, benefits and examples — and report which section matched',
+      },
     },
     required: ['query'],
   },
@@ -361,21 +368,58 @@ const searchWcag = {
     const query = args.query.toLowerCase();
     const allCriteria = await getAllSuccessCriteria({ level: args.level });
 
-    const matches = allCriteria.filter(
-      (sc) =>
+    // Which parts of a criterion matched, so a hit in Examples is not presented
+    // as though the normative text said it.
+    const sections = (sc) => {
+      const hit = [];
+      if (
         sc.handle.toLowerCase().includes(query) ||
         sc.title.toLowerCase().includes(query) ||
         stripHtml(sc.content).toLowerCase().includes(query)
-    );
+      ) {
+        hit.push('Criterion');
+      }
+      return hit;
+    };
+
+    const understandingSections = async (sc) => {
+      const u = await getUnderstandingLocal(sc.num);
+      if (!u) return [];
+      return [
+        ['In Brief', u.brief],
+        ['Intent', u.intent],
+        ['Benefits', u.benefits],
+        ['Examples', u.examples],
+      ]
+        .filter(([, value]) =>
+          (Array.isArray(value) ? value : [value]).some(
+            (v) => typeof v === 'string' && v.toLowerCase().includes(query)
+          )
+        )
+        .map(([label]) => label);
+    };
+
+    const matches = [];
+    for (const sc of allCriteria) {
+      const hit = sections(sc);
+      if (args.understanding) hit.push(...(await understandingSections(sc)));
+      if (hit.length > 0) matches.push({ sc, hit });
+    }
 
     if (matches.length === 0) {
+      const hint = args.understanding
+        ? ''
+        : ' Try --understanding to search the Intent, Benefits and Examples prose as well.';
       return textResponse(
-        `No success criteria found matching "${args.query}"${args.level ? ` at level ${args.level}` : ''}.`
+        `No success criteria found matching "${args.query}"${args.level ? ` at level ${args.level}` : ''}.${hint}`
       );
     }
 
     const output = matches
-      .map((sc) => `**${sc.num} ${sc.handle}** (${levelTag(sc)})\n${truncate(sc.title, 150)}`)
+      .map(({ sc, hit }) => {
+        const where = args.understanding ? `\nmatched in: ${hit.join(', ')}` : '';
+        return `**${sc.num} ${sc.handle}** (${levelTag(sc)})\n${truncate(sc.title, 150)}${where}`;
+      })
       .join('\n\n---\n\n');
 
     return textResponse(

@@ -46,10 +46,6 @@ export function resolveCacheDir() {
 // loadDataset/loadUnderstanding instead of relying on this constant.
 export const CACHE_DIR = resolveCacheDir();
 
-function readNoNetworkEnv() {
-  return process.env.WCAG_CLI_NO_NETWORK === '1';
-}
-
 function note(message) {
   process.stderr.write(`${message}\n`);
 }
@@ -254,14 +250,16 @@ async function tryFetchUnderstanding({ fetchImpl, num, path, now }) {
  *
  * The TTL guard is an early return BEFORE any reference to `fetchImpl` --
  * within TTL, `fetchImpl` is never called (zero network requests). Past TTL,
- * `WCAG_CLI_NO_NETWORK=1` and `--refresh` are both folded into a single
- * decision before fetch is ever touched; no-network wins over refresh.
+ * `noNetwork` and `refresh` are folded into a single decision before fetch is
+ * ever touched; no-network wins over refresh. Both are supplied by the caller —
+ * bin/wcag.js maps WCAG_CLI_NO_NETWORK onto `noNetwork` — so this loader has no
+ * ambient environment behaviour and a test cannot be steered by the shell.
  */
 export async function loadDataset({
   fetchImpl = fetch,
   now = Date.now(),
   refresh = false,
-  noNetwork = readNoNetworkEnv(),
+  noNetwork = false,
   cacheDir = CACHE_DIR,
 } = {}) {
   const paths = cacheDir ? wcagCachePaths(cacheDir) : null;
@@ -310,7 +308,7 @@ export async function loadUnderstanding(num, {
   fetchImpl = fetch,
   now = Date.now(),
   refresh = false,
-  noNetwork = readNoNetworkEnv(),
+  noNetwork = false,
   cacheDir = CACHE_DIR,
 } = {}) {
   // `num` ends up in a cache file path -- reject anything that isn't a

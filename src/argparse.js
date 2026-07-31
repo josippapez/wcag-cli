@@ -1,6 +1,14 @@
-/** Parse process.argv.slice(2) into command, positionals, flags, help. */
+/**
+ * Parse process.argv.slice(2) into command, positionals, flags, help.
+ *
+ * This runs before the tool's schema is known, so `--flag value` is always read
+ * as a flag taking a value. When the flag later turns out to be a boolean, the
+ * token it consumed was really a positional — so record the index it would have
+ * occupied in `swallowedAt`, letting the caller put it back where the user typed
+ * it rather than guessing.
+ */
 export function parseArgv(argv) {
-  const out = { command: undefined, positionals: [], flags: {}, help: false };
+  const out = { command: undefined, positionals: [], flags: {}, help: false, swallowedAt: {} };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
     if (tok === '--help' || tok === '-h') {
@@ -16,6 +24,7 @@ export function parseArgv(argv) {
         const next = argv[i + 1];
         if (next !== undefined && !next.startsWith('--')) {
           out.flags[body] = next;
+          out.swallowedAt[body] = out.positionals.length;
           i++;
         } else {
           out.flags[body] = true;

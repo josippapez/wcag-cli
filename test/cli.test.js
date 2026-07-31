@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const BIN = fileURLToPath(new URL('../bin/wcag.js', import.meta.url));
 // WCAG_CLI_NO_NETWORK keeps every subprocess off the network, so these tests
@@ -107,4 +110,40 @@ test('search-wcag with no positional exits 1 with stderr', () => {
   const r = runFail(['search-wcag']);
   assert.equal(r.code, 1);
   assert.match(r.stderr, /requires argument/i);
+});
+
+// The CLI is the only place WCAG_CLI_NO_NETWORK is read, so assert it end to
+// end: --refresh explicitly asks for a fetch, the env var forbids one, and
+// no-network wins. If bin/wcag.js stopped forwarding it, the refresh would
+// reach w3.org and write a cache into this throwaway directory.
+test('WCAG_CLI_NO_NETWORK=1 beats --refresh and writes no cache', () => {
+  const cacheHome = mkdtempSync(join(tmpdir(), 'wcag-cli-cli-test-'));
+  try {
+    const out = execFileSync('node', [BIN, '--refresh', 'get-criterion', '1.4.3'], {
+      encoding: 'utf8',
+      env: { ...process.env, WCAG_CLI_NO_NETWORK: '1', XDG_CACHE_HOME: cacheHome },
+    });
+    assert.match(out, /1\.4\.3/);
+    assert.equal(existsSync(join(cacheHome, 'wcag-cli')), false);
+  } finally {
+    rmSync(cacheHome, { recursive: true, force: true });
+  }
+});
+
+// The Understanding corpus is far larger than the normative text, so a keyword
+// that only appears in the prose used to be a dead end. `placeholder` is the
+// real case that motivated the flag: absent from every SC title/description.
+test('search-wcag --understanding reaches prose the default search cannot', () => {
+  const plain = run(['search-wcag', 'placeholder']);
+  assert.match(plain, /No success criteria found/);
+  assert.match(plain, /--understanding/, 'the miss should point at the flag');
+
+  const deep = run(['search-wcag', 'placeholder', '--understanding']);
+  assert.match(deep, /Search Results for "placeholder"/);
+  assert.match(deep, /matched in: /, 'says which section matched');
+});
+
+test('search-wcag --understanding keeps the multi-word query joined', () => {
+  const out = run(['search-wcag', 'target', 'size', '--understanding']);
+  assert.match(out, /Search Results for "target size"/);
 });

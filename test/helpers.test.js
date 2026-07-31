@@ -11,6 +11,7 @@ import {
   getTerms,
   getMeta,
   getUnderstanding,
+  getUnderstandingLocal,
   getAllTechniques,
   findSuccessCriterion,
   findPrinciple,
@@ -419,4 +420,26 @@ test('getUnderstanding memoises per criterion', async () => {
 
   const resolved = await first;
   assert.ok(resolved?.intent, 'expected bundled understanding for 1.4.3');
+});
+
+// A corpus-wide search reads all 87 Understanding entries. If those reads could
+// fetch, one search would become 87 requests — so getUnderstandingLocal must
+// pin noNetwork regardless of what the CLI configured, and must ignore refresh.
+test('getUnderstandingLocal never fetches, even when configured to refresh', async () => {
+  let calls = 0;
+  const fetchImpl = () => {
+    calls += 1;
+    throw new Error('a bulk read must not reach the network');
+  };
+  configureDataset({ cacheDir: null, refresh: true, fetchImpl });
+  const u = await getUnderstandingLocal('1.4.3');
+  assert.equal(calls, 0);
+  assert.ok(u?.intent, 'still served the bundled prose');
+});
+
+test('getUnderstandingLocal memoises per criterion', async () => {
+  configureDataset({ noNetwork: true, cacheDir: null });
+  const a = getUnderstandingLocal('1.4.3');
+  const b = getUnderstandingLocal('1.4.3');
+  assert.equal(a, b, 'same in-flight promise, so one read');
 });

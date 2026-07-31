@@ -21,18 +21,21 @@ const require = createRequire(import.meta.url);
 // DATASET ACCESS (memoised)
 // ============================================================================
 
-// Set once by bin/wcag.js before the first lookup; `refresh` is the only knob
-// the CLI exposes (WCAG_CLI_NO_NETWORK is read by src/data.js itself).
+// Set once by bin/wcag.js before the first lookup, and passed straight through
+// to the loaders: `{ refresh, noNetwork }`. Both come from the CLI boundary —
+// this layer reads no environment of its own.
 let loadOptions = {};
 let datasetPromise;
 let techniquesPromise;
 const understandingCache = new Map();
+const localUnderstandingCache = new Map();
 
 export function configureDataset(options = {}) {
   loadOptions = options;
   datasetPromise = undefined;
   techniquesPromise = undefined;
   understandingCache.clear();
+  localUnderstandingCache.clear();
 }
 
 /** Resolved `{ wcag, meta }` — one snapshot per process. */
@@ -65,6 +68,25 @@ export function getUnderstanding(num) {
     understandingCache.set(num, loadUnderstanding(num, loadOptions));
   }
   return understandingCache.get(num);
+}
+
+/**
+ * Same shape as `getUnderstanding`, but guaranteed local: the bundled snapshot
+ * plus whatever the per-criterion cache already holds, never a fetch.
+ *
+ * Reading one criterion may refresh that criterion, which is fine. Sweeping all
+ * 87 must not, or a single search would become 87 requests and break the
+ * documented promise that no command ever pulls the whole corpus at once. So
+ * bulk readers use this and accept possibly-stale prose over a fetch storm.
+ */
+export function getUnderstandingLocal(num) {
+  if (!localUnderstandingCache.has(num)) {
+    localUnderstandingCache.set(
+      num,
+      loadUnderstanding(num, { ...loadOptions, refresh: false, noNetwork: true })
+    );
+  }
+  return localUnderstandingCache.get(num);
 }
 
 /** This package's own version, read in a way that survives --omit=dev. */

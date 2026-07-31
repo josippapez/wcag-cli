@@ -58,26 +58,32 @@ function printCommandHelp(tool) {
 // the ref_id entirely and failed as a missing argument. Give it back.
 //
 // Only schema-declared booleans reach here (`--normative`, `--include_lower`);
-// `--refresh` is already gone, lifted by extractGlobalFlags. The reclaimed token
-// goes to the FRONT, which is right for the natural `--flag <value...>` writing.
-// A flag wedged between the words of one positional (`contrast --normative
-// ratio`) still comes back swapped: restoring true order needs the swallowed
-// token's index, which only parseArgv knows, and src/argparse.js is owned by
-// another chunk. So this is the better of the two approximations available here,
-// not a full fix.
-function reclaimBooleanFlagValues(tool, positionals, flags) {
+// `--refresh` is already gone, lifted by extractGlobalFlags. parseArgv could not
+// know the flag was a boolean, so it consumed the following token as the flag's
+// value; `swallowedAt` says which positional index that token came from, so it
+// goes back exactly there. Reclaiming right-to-left keeps those indices valid
+// when more than one boolean swallowed a token.
+function reclaimBooleanFlagValues(tool, positionals, flags, swallowedAt = {}) {
   const props = tool.inputSchema?.properties ?? {};
-  for (const [name, value] of Object.entries(flags)) {
-    if (props[name]?.type === 'boolean' && typeof value === 'string' && value !== 'true' && value !== 'false') {
-      positionals.unshift(value);
-      flags[name] = true;
-    }
+  const reclaimed = Object.entries(flags)
+    .filter(
+      ([name, value]) =>
+        props[name]?.type === 'boolean' &&
+        typeof value === 'string' &&
+        value !== 'true' &&
+        value !== 'false'
+    )
+    .sort(([a], [b]) => (swallowedAt[b] ?? 0) - (swallowedAt[a] ?? 0));
+
+  for (const [name, value] of reclaimed) {
+    positionals.splice(swallowedAt[name] ?? 0, 0, value);
+    flags[name] = true;
   }
 }
 
 async function main() {
   const { globals, rest } = extractGlobalFlags(process.argv.slice(2));
-  const { command, positionals, flags, help } = parseArgv(rest);
+  const { command, positionals, flags, help, swallowedAt } = parseArgv(rest);
 
   if (command === undefined) {
     printCommandList();
@@ -96,7 +102,7 @@ async function main() {
     return;
   }
 
-  reclaimBooleanFlagValues(tool, positionals, flags);
+  reclaimBooleanFlagValues(tool, positionals, flags, swallowedAt);
 
   const args = buildToolArgs(tool, positionals, flags);
   const missing = (tool.inputSchema?.required ?? []).filter((name) => !(name in args));
@@ -109,9 +115,14 @@ async function main() {
   }
 
   // Must happen before the first lookup: it fixes the single dataset snapshot
-  // every helper in this invocation will read. WCAG_CLI_NO_NETWORK is read by
-  // src/data.js itself, so it is deliberately not threaded through here.
-  configureDataset({ refresh: globals.refresh });
+  // every helper in this invocation will read. The CLI is the one place that
+  // reads WCAG_CLI_NO_NETWORK, so the data layer has no ambient behaviour of
+  // its own — that ambient read is exactly what made the loader tests depend on
+  // the shell they ran in.
+  configureDataset({
+    refresh: globals.refresh,
+    noNetwork: process.env.WCAG_CLI_NO_NETWORK === '1',
+  });
 
   const res = await tool.handler(args);
   const text = res?.content?.[0]?.text ?? '';

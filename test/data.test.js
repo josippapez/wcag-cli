@@ -417,22 +417,18 @@ test('loadDataset: noNetwork wins over refresh, even on a fresh cache', async ()
   }
 });
 
-test('loadDataset: WCAG_CLI_NO_NETWORK=1 env var disables network by default', async () => {
+test('loadDataset: noNetwork is an explicit argument, not an ambient env read', async () => {
   const dir = makeTmpCacheDir();
   const original = process.env.WCAG_CLI_NO_NETWORK;
   process.env.WCAG_CLI_NO_NETWORK = '1';
   try {
+    // The env var is the CLI's to interpret (see test/cli.test.js). This layer
+    // must ignore it entirely, so a stale cache still refreshes here even
+    // though the ambient variable says otherwise.
     writeCache(dir, CACHED_BODY, STALE_META);
     const spy = makeFetchSpy();
-    const { wcag, meta } = await loadDataset({
-      cacheDir: dir,
-      now: NOW,
-      refresh: true,
-      fetchImpl: spy.impl,
-    });
-    assert.deepEqual(wcag, CACHED_BODY);
-    assert.deepEqual(meta, STALE_META);
-    assert.equal(spy.count(), 0);
+    await loadDataset({ cacheDir: dir, now: NOW, refresh: true, fetchImpl: spy.impl });
+    assert.equal(spy.count(), 1);
   } finally {
     if (original === undefined) delete process.env.WCAG_CLI_NO_NETWORK;
     else process.env.WCAG_CLI_NO_NETWORK = original;
