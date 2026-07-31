@@ -40,9 +40,14 @@ export function buildToolArgs(tool, positionals, flags) {
     if (t === 'number' || t === 'integer') return Number(v);
     return String(v);
   };
-  required.forEach((name, idx) => {
-    if (positionals[idx] !== undefined) args[name] = coerce(props[name], positionals[idx]);
-  });
+  if (required.length === 1 && props[required[0]]?.type === 'string') {
+    const name = required[0];
+    if (positionals.length > 0) args[name] = coerce(props[name], positionals.join(' '));
+  } else {
+    required.forEach((name, idx) => {
+      if (positionals[idx] !== undefined) args[name] = coerce(props[name], positionals[idx]);
+    });
+  }
   for (const [k, v] of Object.entries(flags)) {
     if (props[k]) args[k] = coerce(props[k], v);
   }

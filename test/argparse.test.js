@@ -57,3 +57,51 @@ test('buildToolArgs: undeclared flag ignored', () => {
   const args = buildToolArgs(levelTool, ['AA'], { bogus: 'x' });
   assert.deepEqual(args, { level: 'AA' });
 });
+
+const termTool = {
+  inputSchema: {
+    properties: {
+      term: { type: 'string' }
+    },
+    required: ['term']
+  }
+};
+
+test('buildToolArgs: single required string param joins multi-word positionals', () => {
+  const args = buildToolArgs(termTool, ['contrast', 'ratio'], {});
+  assert.deepEqual(args, { term: 'contrast ratio' });
+});
+
+test('buildToolArgs: single required string param still works with one positional', () => {
+  const args = buildToolArgs(termTool, ['contrast'], {});
+  assert.deepEqual(args, { term: 'contrast' });
+});
+
+const twoRequiredTool = {
+  inputSchema: {
+    properties: {
+      a: { type: 'string' },
+      b: { type: 'string' }
+    },
+    required: ['a', 'b']
+  }
+};
+
+test('buildToolArgs: 2+ required params still receive separate positional values', () => {
+  const args = buildToolArgs(twoRequiredTool, ['foo', 'bar'], {});
+  assert.deepEqual(args, { a: 'foo', b: 'bar' });
+});
+
+const numericSingleRequiredTool = {
+  inputSchema: {
+    properties: {
+      count: { type: 'number' }
+    },
+    required: ['count']
+  }
+};
+
+test('buildToolArgs: single required non-string param is not joined', () => {
+  const args = buildToolArgs(numericSingleRequiredTool, ['1', '2'], {});
+  assert.deepEqual(args, { count: 1 });
+});
