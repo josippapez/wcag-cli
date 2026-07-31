@@ -33,7 +33,7 @@ The intent of this success criterion is to help ensure targets can be easily act
 
 Disabilities addressed by this requirement include hand tremors, spasticity, and quadriplegia. Some people with disabilities use specialized input devices instead of a computer mouse or trackpad. Typically these types of input device do not provide as much accuracy as mainstream pointing devices. Meeting this requirement also ensures that touchscreen interfaces are easier to use.
 
-Note
+**Note**
 
 This success criterion defines a minimum size and, if this can't be met, a minimum spacing. It is still possible to have very small, and difficult to activate, targets and meet the requirements of this Success Criterion, provided that the targets don't have any adjacent targets that are too close. However, using larger target sizes will help many people use targets more easily. As a best practice it is recommended to at least meet the minimum size requirement of the Success Criterion, regardless of spacing. For important links/controls, consider aiming for the stricter 2.5.5 Target Size (Enhanced).
 
@@ -121,7 +121,7 @@ In the following example, we have the same two targets – a large target and a 
 
 Figure 10. In the first row, the 16 by 16 CSS pixel target touching/abutting the large target fails, as its 24 CSS pixel diameter circle used for undersized targets intersects the large target. In the second row we see that the only way the undersized target can pass is by adding a 4 CSS pixel spacing gap between the targets (image shown to scale - see the scalable original version)
 
-Note
+**Note**
 
 Users with different disabilities have different needs for control sizes. It can be beneficial to provide an option to increase the active target area without increasing the visible target size. Another option is to provide a mechanism to control the density of layout and thereby change target size or spacing, or both. This can be beneficial for a wide range of users. For example, users with visual field loss may prefer a more condensed layout with smaller sized controls while users with other forms of low vision may prefer large controls.
 

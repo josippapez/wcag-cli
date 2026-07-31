@@ -610,6 +610,17 @@ const getTechniquesForCriterionTool = {
 
       for (const item of items) {
         if (item.title && !item.id) {
+          // An id-less entry is a "Situation X:" grouping header when it has
+          // children, but W3C also lists techniques it has not published yet
+          // ("... (future link)"). Those are leaves, and rendering them bold
+          // put them in the list as if they were headings for the bullets
+          // beneath them.
+          const isGrouping =
+            (item.techniques?.length ?? 0) > 0 || (item.groups?.length ?? 0) > 0;
+          if (!isGrouping) {
+            text += `${indent}- ${stripHtml(item.title)}\n`;
+            continue;
+          }
           text += `${indent}**${stripHtml(item.title)}**\n`;
           if (item.techniques) text += formatTechniques(item.techniques, `${indent}  `);
           for (const group of item.groups ?? []) {

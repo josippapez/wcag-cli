@@ -78,6 +78,13 @@ function stringify(html) {
 // being glued onto the preceding sentence once everything is flattened.
 function stringifyBlocks(html) {
   const marked = unwrapAbbr(html)
+    // W3C marks a note's label with `<p class="note-title marker">Note</p>`
+    // (sometimes `Note 1`). Flattened, that leaves the bare word on its own
+    // line with nothing to identify it as a label, so emphasise it in place.
+    .replace(
+      /<p\b[^>]*class="[^"]*note-title[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
+      (_, label) => `<p>**${collapseSpace(stripTags(label))}**</p>`
+    )
     .replace(/<h[23]\b[^>]*>/gi, '\0')
     .replace(/<\/(p|li|dt|dd|h2|h3)>/gi, '$&\0');
   const blocks = stripTags(decodeEntities(stripTags(marked))).split('\0');

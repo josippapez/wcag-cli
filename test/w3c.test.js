@@ -39,6 +39,26 @@ test('parseUnderstanding strips a bare "Intent" heading too (current W3C templat
   assert.equal(intent, 'The intent of this success criterion is X.');
 });
 
+// The rendered goldens only cover the *shipped* data/, so a regression here
+// would stay invisible until the next regeneration. Pin it at the unit level.
+test('parseUnderstanding emphasises a note label instead of leaving it bare', () => {
+  const html = `<section id="intent"><h2>Intent</h2><p>Body text.</p>
+    <div class="note"><p class="note-title marker">Note</p>
+    <div><p>The note body.</p></div></div></section>`;
+  const { intent } = parseUnderstanding(html);
+  assert.match(intent, /\*\*Note\*\*/);
+  assert.doesNotMatch(intent, /^Note$/m);
+  assert.equal(intent, 'Body text.\n\n**Note**\n\nThe note body.');
+});
+
+test('parseUnderstanding keeps a note label\'s own wording, including a number', () => {
+  const html = `<section id="intent"><h2>Intent</h2>
+    <div class="note"><p class="note-title marker">Note 2</p>
+    <div><p>Second note.</p></div></div></section>`;
+  const { intent } = parseUnderstanding(html);
+  assert.match(intent, /\*\*Note 2\*\*/);
+});
+
 test('parseUnderstanding collapses source-indentation whitespace runs', () => {
   const html = `<section id="intent"><h2>Intent</h2>
 
