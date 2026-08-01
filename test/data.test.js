@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadDataset, loadUnderstanding, resolveCacheDir, TTL_MS } from '../src/data.js';
+import { createHash } from 'node:crypto';
+
+import { loadDataset, loadUnderstanding, resolveCacheDir, TTL_MS, RETRY_BACKOFF_MS } from '../src/data.js';
 
 // --- fixtures -------------------------------------------------------------
 
@@ -303,7 +305,11 @@ test('loadDataset: sends If-Modified-Since when only lastModified is cached (no 
   }
 });
 
-test('loadDataset: sends no conditional headers when the cached body is missing/corrupt', async () => {
+// A corrupt cached body must never be resurrected by a 304. It can still be
+// validated *against the bundle*, though: the request carries the bundled
+// validator, and a 304 means "what you have is current", which is true of
+// the bundle and says nothing about the unreadable file next to it.
+test('loadDataset: a corrupt cached body is validated against the bundle, never revived', async () => {
   const dir = makeTmpCacheDir();
   try {
     writeFileSync(join(dir, 'wcag.json'), '{not valid json');
@@ -311,11 +317,30 @@ test('loadDataset: sends no conditional headers when the cached body is missing/
     const calls = [];
     const fetchImpl = async (url, opts) => {
       calls.push(opts.headers);
-      return jsonResponse({ status: 200, body: makeWcagBody('recovered') });
+      return jsonResponse({ status: 304 });
     };
     const { wcag } = await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
+
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], {}, 'a corrupt/missing cached body must force an unconditional request');
+    assert.equal(
+      calls[0]['If-None-Match'],
+      bundledMetaFixture.etag,
+      'the corrupt cache must not supply the validator; the bundle must'
+    );
+    assert.deepEqual(wcag, bundledWcag);
+    assert.notEqual(readFileSync(join(dir, 'wcag.json'), 'utf8'), '{not valid json');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: a corrupt cached body still recovers from a 200', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeFileSync(join(dir, 'wcag.json'), '{not valid json');
+    writeFileSync(join(dir, 'meta.json'), JSON.stringify(STALE_META));
+    const fetchImpl = async () => jsonResponse({ status: 200, body: makeWcagBody('recovered') });
+    const { wcag } = await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
     assert.deepEqual(wcag, makeWcagBody('recovered'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -644,6 +669,225 @@ test('loadUnderstanding: fetch throwing falls back to stale cache, then bundle',
       loadUnderstanding('1.1.1', { cacheDir: dir, now: NOW, fetchImpl: throwingImpl })
     );
     assert.equal(entryFromCache.brief.goal, 'kept');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- first run (no runtime cache) still gets to use a validator -----------
+//
+// The bundled snapshot ships with the ETag/Last-Modified it was captured
+// under, so an install older than the TTL has a perfectly good validator on
+// disk before it has ever written a cache. Sending it turns the common
+// "W3C hasn't republished" case into an empty 304 instead of a ~500K body.
+
+test('loadDataset: with no runtime cache, the conditional GET carries the bundled validator', async () => {
+  const dir = makeTmpCacheDir(); // empty: nothing has ever been cached
+  try {
+    const calls = [];
+    const fetchImpl = async (url, opts) => {
+      calls.push(opts.headers);
+      return jsonResponse({ status: 304 });
+    };
+    await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]['If-None-Match'], bundledMetaFixture.etag);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: a 304 against the bundled validator serves the bundle and seeds the cache', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    const first = makeFetchSpy(jsonResponse({ status: 304 }));
+    const { wcag, meta } = await loadDataset({
+      cacheDir: dir,
+      now: NOW,
+      noNetwork: false,
+      fetchImpl: first.impl,
+    });
+
+    assert.deepEqual(wcag, bundledWcag);
+    assert.equal(meta.etag, bundledMetaFixture.etag);
+    assert.equal(meta.fetchedAt, new Date(NOW).toISOString());
+
+    // Seeding the body too is what makes the 304 worth anything: without it
+    // the next invocation still has no cached body, reads the bundle's own
+    // stale fetchedAt, and goes back to the network every single time.
+    const second = makeFetchSpy();
+    const again = await loadDataset({
+      cacheDir: dir,
+      now: NOW + 1000,
+      noNetwork: false,
+      fetchImpl: second.impl,
+    });
+    assert.equal(second.count(), 0, 'the seeded cache must be fresh enough to skip the network');
+    assert.deepEqual(again.wcag, bundledWcag);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: the cache seeded by a bundled-validator 304 is byte-for-byte the bundle', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    const { meta } = await loadDataset({
+      cacheDir: dir,
+      now: NOW,
+      noNetwork: false,
+      fetchImpl: async () => jsonResponse({ status: 304 }),
+    });
+
+    // The meta promoted alongside it is the bundle's, sha256 included -- so
+    // seeding a re-serialisation here would reintroduce a digest that
+    // describes bytes nobody can reproduce from the cached file.
+    const onDisk = readFileSync(join(dir, 'wcag.json'), 'utf8');
+    assert.equal(onDisk, readFileSync(repoDataPath('wcag.json'), 'utf8'));
+    assert.equal(meta.sha256, createHash('sha256').update(onDisk).digest('hex'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- meta.sha256 must describe the bytes actually on disk -----------------
+
+test('loadDataset: a 200 body is cached byte-for-byte and meta.sha256 hashes the cached file', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    // Pretty-printed, like the real w3.org file: re-serialising the parsed
+    // object would silently drop this whitespace and change the digest.
+    const wireText = JSON.stringify(makeWcagBody(), null, 2);
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => wireText,
+    });
+
+    const { meta } = await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
+
+    const onDisk = readFileSync(join(dir, 'wcag.json'), 'utf8');
+    assert.equal(onDisk, wireText, 'the cached file must be the bytes the origin served');
+    assert.equal(meta.sha256, createHash('sha256').update(onDisk).digest('hex'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- a failed refresh is remembered, so lookups stop paying for it --------
+//
+// fetchedAt only advances on success, so without this a stale cache behind a
+// blackholed network re-attempts (and waits out the 5s timeout) on every
+// single invocation.
+
+test('loadDataset: a failed refresh is remembered and the next lookup skips the network', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    const spy = makeFetchSpy(() => {
+      throw new Error('ENETUNREACH');
+    });
+
+    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
+    assert.equal(spy.count(), 1);
+
+    const { wcag } = await silencingStderr(() =>
+      loadDataset({ cacheDir: dir, now: NOW + 1000, noNetwork: false, fetchImpl: spy.impl })
+    );
+    assert.equal(spy.count(), 1, 'the second lookup must not retry a just-failed refresh');
+    assert.deepEqual(wcag, CACHED_BODY, 'and it still answers from the stale cache');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: the failure backoff expires and the network is tried again', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    const spy = makeFetchSpy(() => {
+      throw new Error('ENETUNREACH');
+    });
+
+    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
+    await silencingStderr(() =>
+      loadDataset({ cacheDir: dir, now: NOW + RETRY_BACKOFF_MS, noNetwork: false, fetchImpl: spy.impl })
+    );
+    assert.equal(spy.count(), 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: an explicit --refresh ignores the failure backoff', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    const spy = makeFetchSpy(() => {
+      throw new Error('ENETUNREACH');
+    });
+
+    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
+    await silencingStderr(() =>
+      loadDataset({ cacheDir: dir, now: NOW + 1000, noNetwork: false, refresh: true, fetchImpl: spy.impl })
+    );
+    assert.equal(spy.count(), 2, 'asking for a refresh outranks a remembered failure');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: a successful refresh clears a remembered failure', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    let failing = true;
+    const spy = makeFetchSpy(() => {
+      if (failing) throw new Error('ENETUNREACH');
+      return jsonResponse({ status: 200, headers: { etag: 'W/"back-online"' }, body: makeWcagBody() });
+    });
+
+    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
+    failing = false;
+    await loadDataset({ cacheDir: dir, now: NOW + RETRY_BACKOFF_MS, noNetwork: false, fetchImpl: spy.impl });
+
+    // Back online and cached: the next stale lookup must be a normal
+    // conditional GET, not something a leftover marker suppresses.
+    const after = makeFetchSpy(jsonResponse({ status: 304 }));
+    await loadDataset({
+      cacheDir: dir,
+      now: NOW + RETRY_BACKOFF_MS + TTL_MS,
+      noNetwork: false,
+      fetchImpl: after.impl,
+    });
+    assert.equal(after.count(), 1, 'a stale marker must not outlive the failure it recorded');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadUnderstanding: skips the network while a dataset refresh failure is remembered', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    writeCache(dir, CACHED_BODY, STALE_META);
+    const spy = makeFetchSpy(() => {
+      throw new Error('ENETUNREACH');
+    });
+    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
+    assert.equal(spy.count(), 1);
+
+    // The network is down for the whole process, not just for wcag.json.
+    const entry = await loadUnderstanding('1.1.1', {
+      cacheDir: dir,
+      now: NOW + 1000,
+      noNetwork: false,
+      fetchImpl: spy.impl,
+    });
+    assert.equal(spy.count(), 1);
+    assert.deepEqual(entry, bundledUnderstanding['1.1.1']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
