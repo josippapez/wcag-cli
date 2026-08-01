@@ -1,6 +1,6 @@
 {
   "name": "@rawwee/wcag-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publishConfig": {
     "access": "public"
   },
@@ -12,7 +12,7 @@
     "url": "https://github.com/josippapez/wcag-cli/issues"
   },
   "homepage": "https://github.com/josippapez/wcag-cli#readme",
-  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary \u2014 powered by official W3C data. Zero-token-cost alternative to a WCAG MCP server.",
+  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data. Zero-token-cost alternative to a WCAG MCP server.",
   "type": "module",
   "bin": {
     "wcag": "bin/wcag.js"
