@@ -107,8 +107,20 @@ async function main() {
   const args = buildToolArgs(tool, positionals, flags);
   const missing = (tool.inputSchema?.required ?? []).filter((name) => !(name in args));
   if (missing.length > 0) {
+    // parseArgv runs before the schema is known, so any `--token` is read as a
+    // flag. When a required positional is also missing, the likeliest reason is
+    // that the token WAS the value -- say so, instead of reporting the missing
+    // argument and leaving the user to work out where their value went. Only
+    // tokens the command doesn't declare are called out; a real flag alongside
+    // a genuinely forgotten positional still gets the plain message.
+    const props = tool.inputSchema?.properties ?? {};
+    const stray = Object.keys(flags).filter((name) => !props[name]).map((name) => `--${name}`);
+    const hint = stray.length
+      ? ` — ${stray.join(', ')} ${stray.length > 1 ? 'were read as flags, not values' : 'was read as a flag, not a value'}` +
+        ` (positional values cannot begin with '--')`
+      : '';
     process.stderr.write(
-      `wcag: '${command}' requires argument(s): ${missing.join(', ')}. Run 'wcag ${command} --help'.\n`
+      `wcag: '${command}' requires argument(s): ${missing.join(', ')}${hint}. Run 'wcag ${command} --help'.\n`
     );
     process.exit(1);
     return;

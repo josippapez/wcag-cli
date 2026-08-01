@@ -122,8 +122,9 @@ Flag *position* does not matter either. A boolean flag written between the words
 of a multi-word value is put back where you typed it, so
 `wcag search-wcag contrast --understanding ratio` searches `contrast ratio`.
 
-**Known limitation**: positional values starting with `-` or `--` are parsed as
-flags, not positionals, and are not supported.
+**Known limitation**: a positional value starting with `--` is parsed as a flag,
+not a value, and is not supported — the CLI says so when it happens. A single
+leading `-` is fine: `wcag search-wcag -webkit` searches for `-webkit`.
 
 ### Getting Help
 
@@ -195,11 +196,24 @@ WCAG_CLI_NO_NETWORK=1 wcag get-criterion 1.4.3
 
 `WCAG_CLI_NO_NETWORK=1` wins over `--refresh` — set it in CI or in a test harness and the run is guaranteed offline and reproducible.
 
-To move the *bundled* floor forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`:
+To move the *bundled* baseline forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`:
 
 ```bash
 node scripts/fetch-data.mjs
 ```
+
+To check a release against the ones before it, run the same command matrix over
+several published versions and see where the output moved:
+
+```bash
+node scripts/compare-versions.mjs                    # 0.1.0, 0.2.0, latest
+node scripts/compare-versions.mjs --local 0.2.0      # working tree vs 0.2.0
+node scripts/compare-versions.mjs --show get-server-info
+```
+
+Each version is installed into a throwaway directory and run offline with a
+scratch cache, so it compares code rather than data drift. It exits non-zero
+only if the newest version fails a command an older one handled.
 
 ## Attribution
 

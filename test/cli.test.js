@@ -188,3 +188,35 @@ test('a large answer survives the pipe intact when the CLI exits', () => {
   assert.ok(out.endsWith('\n'), 'output must not be cut mid-write');
   assert.equal(out, run(['list-techniques']), 'and it must be the same every run');
 });
+
+// A token like `--foo` is consumed as a flag before any schema is known, so a
+// user who meant it as a value used to see only "requires argument(s): term"
+// and no indication of where their value went. Name the token.
+test('a --value mistaken for a flag is named in the missing-argument error', () => {
+  const r = runFail(['get-glossary-term', '--foo']);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /requires argument\(s\): term/);
+  assert.match(r.stderr, /--foo/, 'the swallowed token must be named');
+  assert.match(r.stderr, /cannot begin with '--'/, 'and the cause explained');
+});
+
+test('several mistaken flags are all named', () => {
+  const r = runFail(['get-glossary-term', '--foo', '--bar']);
+  assert.match(r.stderr, /--foo/);
+  assert.match(r.stderr, /--bar/);
+});
+
+// The hint must not appear when the flags are legitimate — a genuinely
+// forgotten positional should still read as a plain missing argument.
+test('a plain missing argument keeps the plain message', () => {
+  const r = runFail(['get-criterion']);
+  assert.match(r.stderr, /requires argument\(s\): ref_id/);
+  assert.doesNotMatch(r.stderr, /read as a flag/);
+});
+
+// Single-dash values are positionals, not flags: only `--` is affected.
+test('a positional beginning with a single dash is kept as a value', () => {
+  const out = run(['get-glossary-term', '-foo']);
+  assert.match(out, /-foo/);
+  assert.doesNotMatch(out, /requires argument/);
+});
