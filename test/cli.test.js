@@ -175,3 +175,16 @@ test('search-glossary is word-order independent too', () => {
     terms(run(['search-glossary', 'ratio', 'contrast']))
   );
 });
+
+// The CLI exits explicitly once its answer is flushed rather than waiting for
+// the event loop to drain (an aborted refresh leaves its connection attempt
+// holding the loop open long after the answer is ready). Exiting early is only
+// safe if stdout is genuinely flushed first, so pin the largest output the CLI
+// can produce, read through a pipe, byte for byte.
+test('a large answer survives the pipe intact when the CLI exits', () => {
+  const out = run(['list-techniques']);
+  assert.ok(out.length > 30000, `expected a large answer, got ${out.length} bytes`);
+  assert.match(out, /^# /, 'output must start at the beginning');
+  assert.ok(out.endsWith('\n'), 'output must not be cut mid-write');
+  assert.equal(out, run(['list-techniques']), 'and it must be the same every run');
+});

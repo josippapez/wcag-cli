@@ -129,7 +129,25 @@ async function main() {
   process.stdout.write(text.endsWith('\n') ? text : text + '\n');
 }
 
-main().catch((err) => {
-  process.stderr.write(`wcag: ${err?.message ?? err}\n`);
-  process.exit(1);
-});
+// `AbortSignal.timeout` rejects the fetch promise but does not tear down the
+// connection attempt behind it: against a blackholed origin the refresh gives
+// up at 5s, the answer prints, and the process then sits for ~5s more holding
+// a socket nobody will ever read. That doubles the cost of exactly the case
+// FETCH_TIMEOUT_MS exists to bound. Nothing is outstanding by the time main()
+// resolves -- every cache write in the data layer is synchronous -- so the
+// only thing left is to flush and leave.
+//
+// The flush is the whole safety condition, and it is not optional: stdout to a
+// pipe is asynchronous, so a bare process.exit() here would truncate a large
+// answer mid-write. The empty write's callback runs after every write already
+// queued ahead of it, which is precisely "the answer is on its way out".
+function exitWhenFlushed(code) {
+  process.stdout.write('', () => process.exit(code));
+}
+
+main()
+  .then(() => exitWhenFlushed(process.exitCode ?? 0))
+  .catch((err) => {
+    process.stderr.write(`wcag: ${err?.message ?? err}\n`);
+    process.exit(1);
+  });
