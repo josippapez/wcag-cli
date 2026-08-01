@@ -12,7 +12,6 @@
 // URLs on a TTL, so this script exists for release-time snapshots and for
 // regenerating after an upstream errata, not on a schedule.
 import { writeFile, mkdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +19,6 @@ import { WCAG_JSON_URL, understandingUrl, parseUnderstanding } from '../src/w3c.
 
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 
-const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
 // See the aggregate check in main(): measured 81 of 87 on the current dataset,
 // less headroom for genuine W3C page edits.
@@ -92,7 +90,6 @@ async function main() {
         source: WCAG_JSON_URL,
         etag: res.headers.get('etag'),
         lastModified: res.headers.get('last-modified'),
-        sha256: sha256(body),
         criteria: criteria.length,
         fetchedAt: new Date().toISOString(),
       },

@@ -104,7 +104,7 @@ wcag whats-new-in-wcag22
 - **`get-full-criterion-context`** — Everything known about one criterion in a single answer: the overview, the "In Brief" summary, its exceptions, every sufficient/advisory/failure technique listed by ID *and* title, and the glossary terms the criterion's text references.
   - Example: `wcag get-full-criterion-context 1.1.1`
 
-- **`get-server-info`** — Reports the CLI version, the dataset snapshot in use (source URL, ETag, Last-Modified, fetch timestamp, SHA-256), where the runtime cache lives, and dataset statistics.
+- **`get-server-info`** — Reports the CLI version, the dataset snapshot in use (source URL, ETag, Last-Modified, fetch timestamp), where the runtime cache lives, and dataset statistics.
   - Example: `wcag get-server-info`
 
 ## Usage
@@ -178,8 +178,7 @@ The CLI never depends on the network to answer a question, but it will quietly k
 - **One-week TTL.** A cached dataset is considered fresh for 7 days. Inside that window, no request is made at all.
 - **Conditional refresh.** Once the TTL lapses, the next command issues a single conditional `GET` for `wcag.json`, sending the stored `ETag` as `If-None-Match` (or the stored `Last-Modified` as `If-Modified-Since`). A `304 Not Modified` touches only the fetch timestamp — the cached body is left exactly as it is, so the next week is free again. Only a `200` rewrites the data.
 - **The first refresh is conditional too.** The bundle carries the `ETag` and `Last-Modified` it was captured under, so a package installed more than a week after it was published still has a validator before it has ever written a cache. If W3C has not republished since, that first request comes back `304` with an empty body and the bundle is promoted into the cache — no ~500K download to re-fetch data you already installed.
-- **The cache is byte-for-byte what w3.org served.** The response body is stored verbatim, not re-serialised, and the `SHA-256` reported by `wcag get-server-info` is the digest of exactly those bytes — so hashing the cached file reproduces it.
-- **A failed refresh is remembered for an hour.** Because a failure leaves the fetch timestamp untouched, a stale cache behind a dead network would otherwise re-attempt on every single invocation and wait out the 5s timeout each time. The failure is recorded in the cache directory instead, and the network is left alone for an hour — or until you ask for it explicitly with `--refresh`, which always ignores the backoff. Any successful refresh clears it.
+- **The cache is byte-for-byte what w3.org served.** The response body is stored verbatim rather than re-serialised, so the cached file is exactly the file the origin sent.
 - **Understanding pages refresh lazily, one criterion at a time.** The Intent/Benefits/Examples prose behind `get-criterion` is cached and TTL-tracked *per criterion*, with its own timestamp independent of `wcag.json`'s — so refreshing `wcag.json` does not invalidate all 87 pages. When one criterion's entry goes stale, only that page is fetched, and unconditionally rather than with a validator. No command ever pulls all 87 at once.
 - **Never hard-fails.** A refresh that cannot complete — offline, DNS failure, a `5xx`, an empty or malformed response — prints a note to stderr and answers from the cache or the bundled floor. A network problem never turns a lookup into an error.
 

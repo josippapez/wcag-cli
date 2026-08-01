@@ -241,11 +241,9 @@ test('every parsed intent/benefit/resource string is free of tag and entity-tag 
   }
 });
 
-test('data/meta.json records source, etag, lastModified, sha256, criteria, fetchedAt', () => {
+test('data/meta.json records source, etag, lastModified, criteria, fetchedAt', () => {
   const meta = JSON.parse(readFileSync(dataPath('meta.json'), 'utf8'));
   assert.equal(meta.source, WCAG_JSON_URL);
-  assert.equal(typeof meta.sha256, 'string');
-  assert.ok(meta.sha256.length > 0);
   assert.equal(meta.criteria, 87);
   assert.equal(typeof meta.fetchedAt, 'string');
   assert.ok(!Number.isNaN(Date.parse(meta.fetchedAt)));

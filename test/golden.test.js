@@ -25,20 +25,20 @@ const argvFor = (name) => name.split('_');
 
 // get-server-info is the one case whose output is legitimately not fixed: the
 // dataset provenance rotates whenever scripts/fetch-data.mjs runs, and the cache
-// directory is per-machine. Normalising exactly those five value fields keeps the
+// directory is per-machine. Normalising exactly those four value fields keeps the
 // case in the harness — it is the command this epic rewrote most, so its
 // headings, sections and statistics are worth locking — while dropping only the
 // values no formatter change can be inferred from. Labels and line shape are
 // still compared, so renaming or dropping a field still fails.
 //
-// The stored golden holds `<normalised>` in those five slots rather than one
+// The stored golden holds `<normalised>` in those four slots rather than one
 // machine's real values, so the checked-in file never encodes a developer's
 // cache path. Normalising is idempotent, so applying it to both sides is safe.
 // The package version belongs in the same set: it changes on every release, so
 // leaving it literal made a routine `npm version` bump fail this test for no
 // behavioural reason. The `**wcag** v` label is still compared, so dropping the
 // version line entirely would still fail.
-const VOLATILE = /^(- \*\*(?:ETag|Last-Modified|Fetched|SHA-256|Directory):\*\* ).*$/gm;
+const VOLATILE = /^(- \*\*(?:ETag|Last-Modified|Fetched|Directory):\*\* ).*$/gm;
 // Anchored to a semver on purpose: `/^(\*\*wcag\*\* v).*$/` also matched the
 // prefix of "**wcag** version 0.2.0", so renaming the label was normalised away
 // instead of failing. Requiring digits after the `v` keeps the label compared.

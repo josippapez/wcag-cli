@@ -7,8 +7,7 @@
 // accepted decision to hand-roll this with zero dependencies (fetch/fs/os/
 // path are the only primitives needed, and undici does no implicit HTTP
 // caching, so all TTL/etag bookkeeping here is load-bearing).
-import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,9 +15,6 @@ import { fileURLToPath } from 'node:url';
 import { WCAG_JSON_URL, understandingUrl, parseUnderstanding } from './w3c.js';
 
 export const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
-
-// How long a failed refresh is remembered before the network is tried again.
-export const RETRY_BACKOFF_MS = 60 * 60 * 1000; // 1 hour
 
 // A lookup must not stall: bound every network attempt so a blackholed
 // socket or hung origin can't hold a CLI invocation open while the bundled
@@ -83,7 +79,7 @@ function readJsonSafe(filePath) {
 // which self-heals on the next stale check (an extra conditional GET), it
 // never corrupts a read (readJsonSafe treats a half-written temp file as
 // "no cache" since the rename only ever exposes a complete write).
-function writeTextSafe(filePath, text, { quiet = false } = {}) {
+function writeTextSafe(filePath, text) {
   try {
     mkdirSync(dirname(filePath), { recursive: true });
     const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
@@ -91,55 +87,17 @@ function writeTextSafe(filePath, text, { quiet = false } = {}) {
     renameSync(tmp, filePath);
     return true;
   } catch (err) {
-    if (!quiet) note(`wcag-cli: cache write failed (${err.message})`);
+    note(`wcag-cli: cache write failed (${err.message})`);
     return false;
   }
 }
 
-function writeJsonSafe(filePath, data, options) {
-  return writeTextSafe(filePath, JSON.stringify(data), options);
+function writeJsonSafe(filePath, data) {
+  return writeTextSafe(filePath, JSON.stringify(data));
 }
 
 function wcagCachePaths(cacheDir) {
   return { wcag: join(cacheDir, 'wcag.json'), meta: join(cacheDir, 'meta.json') };
-}
-
-// A failed refresh leaves `fetchedAt` untouched -- correct, the data really
-// is still stale -- but on its own that means a stale cache behind a dead
-// network re-attempts on every single invocation, each one waiting out
-// FETCH_TIMEOUT_MS before answering from a cache it was always going to use.
-// Remembering the failure for RETRY_BACKOFF_MS makes that cost once-an-hour
-// instead of once-a-lookup. It is an optimisation over an already-correct
-// fallback, so every part of it degrades to "just try the network": an
-// unwritable marker, an unreadable one, or a malformed one all read as "no
-// recent failure". `--refresh` ignores it outright -- an explicit ask
-// outranks a remembered failure.
-function failureMarkerPath(cacheDir) {
-  return join(cacheDir, 'refresh-failure.json');
-}
-
-function recentlyFailed(cacheDir, now) {
-  if (!cacheDir) return false;
-  const marker = readJsonSafe(failureMarkerPath(cacheDir));
-  const failedAt = marker?.failedAt ? new Date(marker.failedAt).getTime() : NaN;
-  if (Number.isNaN(failedAt)) return false;
-  // A marker dated in the future (clock skew, a restored backup) would
-  // otherwise suppress refreshes indefinitely.
-  return failedAt <= now && now - failedAt < RETRY_BACKOFF_MS;
-}
-
-function recordFailure(cacheDir, now) {
-  if (!cacheDir) return;
-  writeJsonSafe(failureMarkerPath(cacheDir), { failedAt: new Date(now).toISOString() }, { quiet: true });
-}
-
-function clearFailure(cacheDir) {
-  if (!cacheDir) return;
-  try {
-    rmSync(failureMarkerPath(cacheDir), { force: true });
-  } catch {
-    // Nothing to do: a marker we cannot remove only costs a delayed retry.
-  }
 }
 
 function understandingCachePath(cacheDir, num) {
@@ -155,9 +113,7 @@ function readBundledWcag() {
 }
 
 // The raw bytes, not the parsed object: promoting the bundle into the cache
-// carries `data/meta.json`'s sha256 with it, and that digest is over these
-// bytes. Re-serialising here would put a file on disk that cannot reproduce
-// the digest get-server-info reports.
+// should put the origin's own bytes there, not a re-serialisation of them.
 function readBundledWcagText() {
   return readFileSync(bundledPath('wcag.json'), 'utf8');
 }
@@ -222,7 +178,7 @@ function stripFetchedAt({ fetchedAt, ...rest }) {
 // (fetchedAt) on a 304; never rewrite the body file. `res.text()` resolves
 // to '' on a 304 without throwing, but JSON.parse('') throws, so the body is
 // only ever read on a genuine 200.
-async function tryFetchWcag({ fetchImpl, validator, paths, cacheDir, now }) {
+async function tryFetchWcag({ fetchImpl, validator, paths, now }) {
   try {
     const headers = {};
     if (validator?.meta?.etag) headers['If-None-Match'] = validator.meta.etag;
@@ -241,13 +197,11 @@ async function tryFetchWcag({ fetchImpl, validator, paths, cacheDir, now }) {
       // Read lazily: only a 304 against the bundled validator ever needs the
       // ~500K of raw text, and only to copy it into the cache once.
       if (!validator.onDisk) writeTextSafe(paths.wcag, validator.readText());
-      clearFailure(cacheDir);
       return { wcag: validator.body, meta: touched };
     }
 
     if (!res.ok) {
       note(`wcag-cli: dataset refresh failed (HTTP ${res.status}); using cached data`);
-      recordFailure(cacheDir, now);
       return null;
     }
 
@@ -255,38 +209,32 @@ async function tryFetchWcag({ fetchImpl, validator, paths, cacheDir, now }) {
     const body = JSON.parse(text);
     if (countCriteria(body) === 0) {
       note('wcag-cli: dataset refresh returned no success criteria; using cached data');
-      recordFailure(cacheDir, now);
       return null;
     }
-    // `sha256` and `criteria` are carried too, so a refreshed cache's meta has
-    // the same shape as the bundled `data/meta.json`. Without them
-    // get-server-info would report a complete dataset before the first refresh
-    // and a partial one after it.
+    // `criteria` is carried too, so a refreshed cache's meta has the same
+    // shape as the bundled `data/meta.json`. Without it get-server-info would
+    // report a complete dataset before the first refresh and a partial one
+    // after it.
     const meta = {
       source: WCAG_JSON_URL,
       etag: res.headers.get('etag') ?? null,
       lastModified: res.headers.get('last-modified') ?? null,
-      sha256: createHash('sha256').update(text).digest('hex'),
       criteria: countCriteria(body),
       fetchedAt: new Date(now).toISOString(),
     };
     // Store the response text verbatim rather than a re-serialisation of the
-    // parsed object: `sha256` is computed over these bytes and
-    // get-server-info reports it, so anyone hashing the cached file has to
-    // get the same digest back. `scripts/fetch-data.mjs` writes the bundle
-    // the same way, which is what keeps the two comparable.
+    // parsed object -- the cached file is then exactly what w3.org served,
+    // same as `scripts/fetch-data.mjs` writes the bundle.
     writeTextSafe(paths.wcag, text);
     writeJsonSafe(paths.meta, meta);
-    clearFailure(cacheDir);
     return { wcag: body, meta };
   } catch (err) {
     note(`wcag-cli: dataset refresh failed (${err.message}); using cached data`);
-    recordFailure(cacheDir, now);
     return null;
   }
 }
 
-async function tryFetchUnderstanding({ fetchImpl, num, path, cacheDir, now }) {
+async function tryFetchUnderstanding({ fetchImpl, num, path, now }) {
   const criterion = findCriterion(num);
   if (!criterion) return null;
   try {
@@ -296,7 +244,6 @@ async function tryFetchUnderstanding({ fetchImpl, num, path, cacheDir, now }) {
 
     if (!res.ok) {
       note(`wcag-cli: understanding refresh failed for ${num} (HTTP ${res.status}); using cached data`);
-      recordFailure(cacheDir, now);
       return null;
     }
 
@@ -304,16 +251,13 @@ async function tryFetchUnderstanding({ fetchImpl, num, path, cacheDir, now }) {
     const parsed = parseUnderstanding(html, criterion.handle);
     if (!parsed.intent) {
       note(`wcag-cli: understanding refresh for ${num} returned no intent text; using cached data`);
-      recordFailure(cacheDir, now);
       return null;
     }
     const entry = { ...parsed, fetchedAt: new Date(now).toISOString() };
     writeJsonSafe(path, entry);
-    clearFailure(cacheDir);
     return stripFetchedAt(entry);
   } catch (err) {
     note(`wcag-cli: understanding refresh failed for ${num} (${err.message}); using cached data`);
-    recordFailure(cacheDir, now);
     return null;
   }
 }
@@ -355,7 +299,7 @@ export async function loadDataset({
     }
   }
 
-  if (!noNetwork && paths && (refresh || !recentlyFailed(cacheDir, now))) {
+  if (!noNetwork && paths) {
     // A validator is only worth sending alongside a body we can actually
     // serve if the answer comes back 304. The runtime cache is the first
     // choice; failing that (first run ever, or a corrupt/missing cached
@@ -368,7 +312,7 @@ export async function loadDataset({
       cachedBody && cachedMeta
         ? { meta: cachedMeta, body: cachedBody, onDisk: true }
         : bundled && { meta: bundled, body: readBundledWcag(), readText: readBundledWcagText, onDisk: false };
-    const fetched = await tryFetchWcag({ fetchImpl, validator, paths, cacheDir, now });
+    const fetched = await tryFetchWcag({ fetchImpl, validator, paths, now });
     if (fetched && fetched.wcag) return fetched;
   }
 
@@ -418,8 +362,8 @@ export async function loadUnderstanding(num, {
     }
   }
 
-  if (!noNetwork && path && (refresh || !recentlyFailed(cacheDir, now))) {
-    const fetched = await tryFetchUnderstanding({ fetchImpl, num, path, cacheDir, now });
+  if (!noNetwork && path) {
+    const fetched = await tryFetchUnderstanding({ fetchImpl, num, path, now });
     if (fetched) return fetched;
   }
 

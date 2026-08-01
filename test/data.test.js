@@ -5,9 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createHash } from 'node:crypto';
-
-import { loadDataset, loadUnderstanding, resolveCacheDir, TTL_MS, RETRY_BACKOFF_MS } from '../src/data.js';
+import { loadDataset, loadUnderstanding, resolveCacheDir, TTL_MS } from '../src/data.js';
 
 // --- fixtures -------------------------------------------------------------
 
@@ -733,27 +731,23 @@ test('loadDataset: a 304 against the bundled validator serves the bundle and see
 test('loadDataset: the cache seeded by a bundled-validator 304 is byte-for-byte the bundle', async () => {
   const dir = makeTmpCacheDir();
   try {
-    const { meta } = await loadDataset({
+    await loadDataset({
       cacheDir: dir,
       now: NOW,
       noNetwork: false,
       fetchImpl: async () => jsonResponse({ status: 304 }),
     });
 
-    // The meta promoted alongside it is the bundle's, sha256 included -- so
-    // seeding a re-serialisation here would reintroduce a digest that
-    // describes bytes nobody can reproduce from the cached file.
     const onDisk = readFileSync(join(dir, 'wcag.json'), 'utf8');
     assert.equal(onDisk, readFileSync(repoDataPath('wcag.json'), 'utf8'));
-    assert.equal(meta.sha256, createHash('sha256').update(onDisk).digest('hex'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// --- meta.sha256 must describe the bytes actually on disk -----------------
+// --- the cache holds what the origin served, not a re-serialisation -------
 
-test('loadDataset: a 200 body is cached byte-for-byte and meta.sha256 hashes the cached file', async () => {
+test('loadDataset: a 200 body is cached byte-for-byte', async () => {
   const dir = makeTmpCacheDir();
   try {
     writeCache(dir, CACHED_BODY, STALE_META);
@@ -767,128 +761,12 @@ test('loadDataset: a 200 body is cached byte-for-byte and meta.sha256 hashes the
       text: async () => wireText,
     });
 
-    const { meta } = await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
+    await loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl });
 
     const onDisk = readFileSync(join(dir, 'wcag.json'), 'utf8');
     assert.equal(onDisk, wireText, 'the cached file must be the bytes the origin served');
-    assert.equal(meta.sha256, createHash('sha256').update(onDisk).digest('hex'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// --- a failed refresh is remembered, so lookups stop paying for it --------
-//
-// fetchedAt only advances on success, so without this a stale cache behind a
-// blackholed network re-attempts (and waits out the 5s timeout) on every
-// single invocation.
-
-test('loadDataset: a failed refresh is remembered and the next lookup skips the network', async () => {
-  const dir = makeTmpCacheDir();
-  try {
-    writeCache(dir, CACHED_BODY, STALE_META);
-    const spy = makeFetchSpy(() => {
-      throw new Error('ENETUNREACH');
-    });
-
-    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
-    assert.equal(spy.count(), 1);
-
-    const { wcag } = await silencingStderr(() =>
-      loadDataset({ cacheDir: dir, now: NOW + 1000, noNetwork: false, fetchImpl: spy.impl })
-    );
-    assert.equal(spy.count(), 1, 'the second lookup must not retry a just-failed refresh');
-    assert.deepEqual(wcag, CACHED_BODY, 'and it still answers from the stale cache');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('loadDataset: the failure backoff expires and the network is tried again', async () => {
-  const dir = makeTmpCacheDir();
-  try {
-    writeCache(dir, CACHED_BODY, STALE_META);
-    const spy = makeFetchSpy(() => {
-      throw new Error('ENETUNREACH');
-    });
-
-    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
-    await silencingStderr(() =>
-      loadDataset({ cacheDir: dir, now: NOW + RETRY_BACKOFF_MS, noNetwork: false, fetchImpl: spy.impl })
-    );
-    assert.equal(spy.count(), 2);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('loadDataset: an explicit --refresh ignores the failure backoff', async () => {
-  const dir = makeTmpCacheDir();
-  try {
-    writeCache(dir, CACHED_BODY, STALE_META);
-    const spy = makeFetchSpy(() => {
-      throw new Error('ENETUNREACH');
-    });
-
-    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
-    await silencingStderr(() =>
-      loadDataset({ cacheDir: dir, now: NOW + 1000, noNetwork: false, refresh: true, fetchImpl: spy.impl })
-    );
-    assert.equal(spy.count(), 2, 'asking for a refresh outranks a remembered failure');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('loadDataset: a successful refresh clears a remembered failure', async () => {
-  const dir = makeTmpCacheDir();
-  try {
-    writeCache(dir, CACHED_BODY, STALE_META);
-    let failing = true;
-    const spy = makeFetchSpy(() => {
-      if (failing) throw new Error('ENETUNREACH');
-      return jsonResponse({ status: 200, headers: { etag: 'W/"back-online"' }, body: makeWcagBody() });
-    });
-
-    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
-    failing = false;
-    await loadDataset({ cacheDir: dir, now: NOW + RETRY_BACKOFF_MS, noNetwork: false, fetchImpl: spy.impl });
-
-    // Back online and cached: the next stale lookup must be a normal
-    // conditional GET, not something a leftover marker suppresses.
-    const after = makeFetchSpy(jsonResponse({ status: 304 }));
-    await loadDataset({
-      cacheDir: dir,
-      now: NOW + RETRY_BACKOFF_MS + TTL_MS,
-      noNetwork: false,
-      fetchImpl: after.impl,
-    });
-    assert.equal(after.count(), 1, 'a stale marker must not outlive the failure it recorded');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('loadUnderstanding: skips the network while a dataset refresh failure is remembered', async () => {
-  const dir = makeTmpCacheDir();
-  try {
-    writeCache(dir, CACHED_BODY, STALE_META);
-    const spy = makeFetchSpy(() => {
-      throw new Error('ENETUNREACH');
-    });
-    await silencingStderr(() => loadDataset({ cacheDir: dir, now: NOW, noNetwork: false, fetchImpl: spy.impl }));
-    assert.equal(spy.count(), 1);
-
-    // The network is down for the whole process, not just for wcag.json.
-    const entry = await loadUnderstanding('1.1.1', {
-      cacheDir: dir,
-      now: NOW + 1000,
-      noNetwork: false,
-      fetchImpl: spy.impl,
-    });
-    assert.equal(spy.count(), 1);
-    assert.deepEqual(entry, bundledUnderstanding['1.1.1']);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});

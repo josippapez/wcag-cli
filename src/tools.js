@@ -993,7 +993,6 @@ const getServerInfo = {
     output += `- **ETag:** ${meta?.etag ?? '(none)'}\n`;
     output += `- **Last-Modified:** ${meta?.lastModified ?? '(none)'}\n`;
     output += `- **Fetched:** ${meta?.fetchedAt ?? '(unknown)'}\n`;
-    output += `- **SHA-256:** ${meta?.sha256 ?? '(unknown)'}\n`;
     output += '- **Understanding docs:** parsed from the official W3C Understanding HTML pages\n';
     output += '- **WCAG version:** 2.2\n\n';
 

@@ -8,7 +8,6 @@ Command-line lookup for WCAG 2.2 success criteria, techniques and glossary, serv
 - **ETag:** <normalised>
 - **Last-Modified:** <normalised>
 - **Fetched:** <normalised>
-- **SHA-256:** <normalised>
 - **Understanding docs:** parsed from the official W3C Understanding HTML pages
 - **WCAG version:** 2.2
 
