@@ -288,17 +288,15 @@ export async function loadDataset({
     return { wcag: cachedBody, meta: cachedMeta };
   }
 
-  // No refresh cache yet: the bundle itself was captured at build time and
-  // carries its own fetchedAt (data/meta.json). Honour that TTL too, so a
-  // freshly installed CLI still makes zero requests on the common in-TTL
-  // path instead of refetching on every single lookup.
-  if (!cachedMeta || !cachedBody) {
-    const bmeta = bundledMeta();
-    if (bmeta && !refresh && !isStale(bmeta.fetchedAt, now)) {
-      return { wcag: readBundledWcag(), meta: bmeta };
-    }
-  }
-
+  // No early return for a fresh bundle: a missing cache means refresh, the
+  // same as a stale one does. The bundle is the baseline that makes the
+  // package useful the moment it is installed, and the floor this falls back
+  // to when the refresh cannot complete -- not a reason to skip the first
+  // refresh. Skipping it left `~/.cache/wcag-cli` uncreated for as long as the
+  // bundle stayed inside its own TTL, so freshness ran off the publish date
+  // rather than off the machine's own first use. The cost is one conditional
+  // GET per install, and because the bundled ETag goes out with it, the usual
+  // answer is a 304 with an empty body.
   if (!noNetwork && paths) {
     // A validator is only worth sending alongside a body we can actually
     // serve if the answer comes back 304. The runtime cache is the first
@@ -352,16 +350,11 @@ export async function loadUnderstanding(num, {
     return stripFetchedAt(cached);
   }
 
-  // No per-criterion cache yet: fall back to the bundle's own TTL (it was
-  // captured at the same build time as data/meta.json) before making a
-  // request, for the same reason as loadDataset's bundled-floor TTL check.
-  if (!cached) {
-    const bmeta = bundledMeta();
-    if (bmeta && !refresh && !isStale(bmeta.fetchedAt, now)) {
-      return readBundledUnderstanding(num);
-    }
-  }
-
+  // Same rule as loadDataset: no cached entry means refresh this criterion,
+  // regardless of how new the bundle is, and the entry that comes back starts
+  // its own week. Still strictly lazy -- one page for the criterion actually
+  // asked for, never the whole corpus -- so a first run costs one request per
+  // criterion someone actually reads, not 87.
   if (!noNetwork && path) {
     const fetched = await tryFetchUnderstanding({ fetchImpl, num, path, now });
     if (fetched) return fetched;

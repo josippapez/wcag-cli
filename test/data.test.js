@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -770,3 +770,99 @@ test('loadDataset: a 200 body is cached byte-for-byte', async () => {
   }
 });
 
+
+// --- first run refreshes and builds the cache -----------------------------
+//
+// The lifecycle is uniform: no cache or a stale one means refresh, and the
+// answer is written to the cache. The bundle is the baseline that makes the
+// package useful the moment it is installed and the floor a failed refresh
+// falls back to -- it is not a reason to skip the first refresh, so a fresh
+// bundle does not suppress it.
+
+const NOW_FRESH_BUNDLE = new Date(bundledMetaFixture.fetchedAt).getTime() + 24 * 60 * 60 * 1000;
+
+test('loadDataset: first run refreshes and builds the cache even when the bundle is fresh', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    const spy = makeFetchSpy(jsonResponse({ status: 304 }));
+    const { wcag, meta } = await loadDataset({
+      cacheDir: dir,
+      now: NOW_FRESH_BUNDLE,
+      noNetwork: false,
+      fetchImpl: spy.impl,
+    });
+
+    assert.equal(spy.count(), 1, 'a missing cache must be built, not skipped because the bundle is new');
+    assert.deepEqual(wcag, bundledWcag);
+    assert.equal(meta.fetchedAt, new Date(NOW_FRESH_BUNDLE).toISOString());
+    assert.equal(
+      readFileSync(join(dir, 'wcag.json'), 'utf8'),
+      readFileSync(repoDataPath('wcag.json'), 'utf8')
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: the cache the first run builds is then honoured for the full TTL', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    await loadDataset({
+      cacheDir: dir,
+      now: NOW_FRESH_BUNDLE,
+      noNetwork: false,
+      fetchImpl: async () => jsonResponse({ status: 304 }),
+    });
+
+    const spy = makeFetchSpy();
+    await loadDataset({
+      cacheDir: dir,
+      now: NOW_FRESH_BUNDLE + TTL_MS - 1000,
+      noNetwork: false,
+      fetchImpl: spy.impl,
+    });
+    assert.equal(spy.count(), 0, 'the TTL now runs from the cache, not from the bundle');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadDataset: with no network the fresh bundle still answers without a cache', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    const { wcag } = await loadDataset({
+      cacheDir: dir,
+      now: NOW_FRESH_BUNDLE,
+      noNetwork: true,
+      fetchImpl: throwingFetch,
+    });
+    assert.deepEqual(wcag, bundledWcag, 'the baseline must still work on a first run that cannot refresh');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadUnderstanding: first look at a criterion refreshes and caches it, fresh bundle or not', async () => {
+  const dir = makeTmpCacheDir();
+  try {
+    const html = '<section id="intent"><h2>Intent</h2><p>Refreshed prose.</p></section>';
+    const spy = makeFetchSpy({ ok: true, status: 200, headers: { get: () => null }, text: async () => html });
+    const entry = await loadUnderstanding('1.1.1', {
+      cacheDir: dir,
+      now: NOW_FRESH_BUNDLE,
+      noNetwork: false,
+      fetchImpl: spy.impl,
+    });
+
+    assert.equal(spy.count(), 1);
+    assert.equal(entry.intent, 'Refreshed prose.');
+    const onDisk = JSON.parse(readFileSync(join(dir, 'understanding', '1.1.1.json'), 'utf8'));
+    assert.equal(onDisk.fetchedAt, new Date(NOW_FRESH_BUNDLE).toISOString());
+
+    // Only the criterion actually asked for -- a first run must not turn into
+    // 87 requests.
+    assert.deepEqual(readdirSync(join(dir, 'understanding')), ['1.1.1.json']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
