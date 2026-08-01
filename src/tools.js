@@ -2,7 +2,7 @@
 // bin/wcag.js dispatches by name, derives `--help` from `inputSchema`, and
 // prints `handler(args).content[0].text`.
 //
-// Ported from the upstream WCAG MCP server's `src/tools.js` (see README for
+// Ported from `wcag-guidelines-mcp`'s `src/tools.js` (see README for
 // attribution). Output is byte-identical to
 // that implementation except for the deviations marked "CHANGE" below, each of
 // which is an intended fix recorded in
@@ -949,8 +949,9 @@ const getFullCriterionContext = {
   },
 };
 
-// CHANGE 4: rewritten for a CLI. The old text self-described as an MCP server,
-// hard-coded v2.0.0, and cited the dependency this package no longer has.
+// CHANGE 4: rewritten for a CLI. The upstream text described a server rather
+// than a command, hard-coded v2.0.0, and cited the dependency this package no
+// longer has.
 // Reports what a CLI user actually needs: which version they run, which dataset
 // snapshot answers their lookups, and where/when it refreshes.
 function displayPath(path) {

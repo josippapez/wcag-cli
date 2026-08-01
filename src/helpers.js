@@ -1,7 +1,7 @@
 // Lookup helpers over the WCAG dataset.
 //
-// Ported from the upstream WCAG MCP server's `src/data-helpers.js` (see README
-// for attribution), with one structural change: upstream `require()`d its
+// Ported from `wcag-guidelines-mcp`'s `src/data-helpers.js` (see README for
+// attribution), with one structural change: upstream `require()`d its
 // bundled wcag.json at import time and
 // exported plain `principles`/`terms` arrays. Our dataset access layer
 // (`src/data.js`) is async because it may consult an XDG cache and do a
