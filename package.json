@@ -12,7 +12,7 @@
     "url": "https://github.com/josippapez/wcag-cli/issues"
   },
   "homepage": "https://github.com/josippapez/wcag-cli#readme",
-  "description": "CLI for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data. Zero-token-cost alternative to a WCAG MCP server.",
+  "description": "Command-line lookup for WCAG 2.2 success criteria, techniques and glossary, built from official W3C data. Runs offline, no runtime dependencies.",
   "type": "module",
   "bin": {
     "wcag": "bin/wcag.js"

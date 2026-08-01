@@ -2,7 +2,7 @@
 
 A command-line interface for WCAG 2.2 guidelines, techniques, and glossary — powered by official W3C data.
 
-**wcag-cli** is a zero-token-cost alternative to a WCAG MCP server: the same lookups, answered by a local command instead of a model round-trip. It owns its data end to end — the WCAG 2.2 dataset and the parsed Understanding documentation are built straight from W3C sources and bundled with the package, with no runtime dependencies.
+**wcag-cli** answers WCAG questions from your terminal — nothing to run, nothing to sign up for, and no round-trip before you get an answer. It owns its data end to end: the WCAG 2.2 dataset and the parsed Understanding documentation are built straight from official W3C sources and bundled with the package, with no runtime dependencies.
 
 ## Installation
 
