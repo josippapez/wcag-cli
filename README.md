@@ -91,6 +91,8 @@ wcag --wcag 2.1 list-success-criteria --level AA
 
 - **`get-technique`** — Gets a technique by ID: what it applies to, its full description, its examples with code samples, the test procedure and expected results, related techniques and resources.
   - Example: `wcag get-technique H37`
+  - `--brief` drops the examples and resources and keeps the description, tests and related techniques. Examples are the one section that gets large (a typical page is 3 KB, a third of it examples; the largest is 12.6 KB), so this is the flag for a reader who wants the procedure without the samples.
+  - Example: `wcag get-technique H37 --brief`
 
 - **`get-techniques-for-criterion`** — Gets all techniques (sufficient, advisory, and failures) for a specific success criterion.
   - Example: `wcag get-techniques-for-criterion 2.4.7`

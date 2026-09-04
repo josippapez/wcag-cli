@@ -164,3 +164,21 @@ test('whats-new is version generic and also reports removals; the wcag22 alias i
   assert.match(out, /4\.1\.1 Parsing/);
   assert.equal(out, run(['whats-new-in-wcag22']));
 });
+
+// --- --brief -------------------------------------------------------------------
+
+// Examples are the one technique section that gets large (8.9 KB at most,
+// about a third of a typical page); the description and the test procedure
+// are what a reader asking by id nearly always wants. --brief keeps those.
+test('get-technique --brief keeps description, tests and related techniques, drops examples and resources', () => {
+  const full = run(['get-technique', 'H37']);
+  const brief = run(['get-technique', 'H37', '--brief']);
+  assert.equal(brief, run(['get-technique', '--brief', 'H37']));
+  assert.match(brief, /^## Description$/m);
+  assert.match(brief, /^### Procedure$/m);
+  assert.match(brief, /^## Related Techniques$/m);
+  assert.doesNotMatch(brief, /^## Examples$/m);
+  assert.doesNotMatch(brief, /^## Resources$/m);
+  assert.ok(brief.length < full.length);
+  assert.deepEqual(JSON.parse(run(['get-technique', 'H37', '--brief', '--json'])).examples, []);
+});

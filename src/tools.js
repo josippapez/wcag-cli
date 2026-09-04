@@ -733,15 +733,23 @@ function renderBlocks(blocks) {
 const getTechnique = {
   name: 'get-technique',
   description:
-    'Gets a technique by ID (e.g., "H37", "ARIA1", "G94", "F65"): what it applies to, its description, examples, test procedure and expected results, related techniques and resources.',
+    'Gets a technique by ID (e.g., "H37", "ARIA1", "G94", "F65"): what it applies to, its description, examples, test procedure and expected results, related techniques and resources. Pass --brief to drop the examples and resources.',
   inputSchema: {
     type: 'object',
     properties: {
       id: { type: 'string', description: 'Technique ID (e.g., "H37", "ARIA1", "G94", "F65")' },
+      // Examples are the one section that gets large (8.9 KB at most, about a
+      // third of a typical page); the description and the test procedure are
+      // what a reader asking by id nearly always wants.
+      brief: {
+        type: 'boolean',
+        description: 'Keep the description, tests and related techniques; drop the examples and resources',
+      },
     },
     required: ['id'],
   },
   handler: async (args) => {
+    const brief = args.brief === true;
     const technique = await findTechnique(args.id);
 
     if (!technique) {
@@ -784,7 +792,7 @@ const getTechnique = {
       output += `## Description\n\n${renderBlocks(body.description)}`;
     }
 
-    if (body?.examples?.length) {
+    if (!brief && body?.examples?.length) {
       output += '## Examples\n\n';
       for (const example of body.examples) {
         output += `### ${example.title}\n\n${renderBlocks(example.blocks)}`;
@@ -813,7 +821,7 @@ const getTechnique = {
       output += '\n';
     }
 
-    if (body?.resources?.length) {
+    if (!brief && body?.resources?.length) {
       output += '## Resources\n\n';
       for (const r of body.resources) output += `- [${r.title}](${r.url})\n`;
       output += '\n';
@@ -831,12 +839,13 @@ const getTechnique = {
       ...techniqueSummary(technique),
       criteria: criteria.map(criterionSummary),
       url,
+      brief,
       applicability: body?.applicability ?? '',
       description: body?.description ?? [],
-      examples: body?.examples ?? [],
+      examples: brief ? [] : body?.examples ?? [],
       tests: body?.tests ?? { procedure: [], expectedResults: [] },
       related,
-      resources: body?.resources ?? [],
+      resources: brief ? [] : body?.resources ?? [],
     });
   },
 };

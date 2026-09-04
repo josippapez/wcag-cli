@@ -1,0 +1,39 @@
+# H37: Using alt attributes on img elements
+
+**Technology:** html
+**Types:** sufficient
+**Applies to:** 1 success criterion
+**Applicability:** This technique applies to images used within HTML documents.
+
+## Related Success Criteria
+
+- **1.1.1** Non-text Content (Level A)
+
+## Description
+
+When using the img element, specify a short text alternative with the alt attribute. Note. The value of this attribute is referred to as "alt text".
+
+When an image contains words that are important to understanding the content, the alt text should include those words. This will allow the alt text to play the same function on the page as the image. Note that it does not necessarily describe the visual characteristics of the image itself but must convey the same meaning as the image.
+
+## Tests
+
+### Procedure
+
+1. Examine each img element in the content.
+2. Check that each img element which conveys meaning contains an alt attribute.
+3. If the image contains words that are important to understanding the content, the words are included in the text alternative.
+
+### Expected Results
+
+Checks #2 and #3 are true.
+
+## Related Techniques
+
+- **G82**: Providing a text alternative that identifies the purpose of interactive non-text content
+- **H2**: Combining adjacent image and text links for the same resource
+- **H24**: Providing text alternatives for the area elements of image maps
+- **H30**: Providing link text that describes the purpose of a link for anchor elements
+
+## Links
+
+- [Full Technique Documentation](https://www.w3.org/WAI/WCAG22/Techniques/html/H37)

@@ -54,7 +54,7 @@ const files = readdirSync(GOLDEN_DIR)
 // silently shrink coverage instead of failing. Assert the count: adding a case
 // is a deliberate one-line bump here, losing one is a test failure.
 test('the golden corpus is complete', () => {
-  assert.equal(files.length, 30, 'a golden was added or removed — update this count on purpose');
+  assert.equal(files.length, 31, 'a golden was added or removed — update this count on purpose');
 });
 
 for (const file of files) {
