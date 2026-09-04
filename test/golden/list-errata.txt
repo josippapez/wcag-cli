@@ -1,0 +1,40 @@
+# WCAG 2.2 Errata (28)
+
+## Errata since Current Publication
+
+### Editorial Errata
+
+- **2026-08-17** In the definition for single pointer, changing "touch screen" to "touchscreen" for consistency ([#5038](https://github.com/w3c/wcag/pull/5038))
+- **2026-08-17** In the definition for process, changing the example provided to avoid potential confusion ([#3538](https://github.com/w3c/wcag/pull/3538))
+- **2026-08-17** Fixing the title attribute for definitions marked as "new" in 2.2 ([#4857](https://github.com/w3c/wcag/pull/4857))
+- **2026-08-17** Fixing grammar in Privacy and Security Considerations for better readability ([#4776](https://github.com/w3c/wcag/pull/4776))
+- **2026-08-17** Expanding mentions of success criteria to their full short name, rather than just referring to them by number alone ([#4947](https://github.com/w3c/wcag/pull/4947))
+- **2026-08-17** In 1.4.13 Content on Hover or Focus, conforming the phrasing in the exception for consistency ([#4741](https://github.com/w3c/wcag/pull/4741))
+- **2025-10-28** In 1.4.13 Content on Hover or Focus, rewording the normative preamble for clarity ([#4469](https://github.com/w3c/wcag/pull/4469))
+- **2025-10-28** Changing occurrences of "e-mail" to "email" ([#4385](https://github.com/w3c/wcag/pull/4385))
+- **2025-10-28** Removing use of "must" in section 7 preamble ([#4458](https://github.com/w3c/wcag/pull/4458))
+- **2025-10-28** In the definition for abbreviation, fixing the markup for the notes ([#4452](https://github.com/w3c/wcag/pull/4452))
+- **2025-10-28** Changing capitalized occurrences of "Web" and "Success Criteria" to match the established lower-case style ([#4461](https://github.com/w3c/wcag/pull/4461))
+- **2025-10-28** Restyling the boxed links for the Understanding and How to Meet... documents ([#4590](https://github.com/w3c/wcag/pull/4590))
+- **2025-06-27** Correcting the alphabetical order of two definitions ([#4256](https://github.com/w3c/wcag/pull/4256))
+- **2025-06-27** In the definition for motion animation, amending the definition to not exclude blurring ([#4040](https://github.com/w3c/wcag/pull/4040))
+- **2025-06-27** In 3.2.6 Consistent Help, harmonizing occurrences of "breakpoint" to be one word ([#4165](https://github.com/w3c/wcag/pull/4165))
+- **2025-06-27** In the Introduction, linking directly to new supplemental guidance ([#2296](https://github.com/w3c/wcag/pull/2296))
+- **2025-06-27** In the definitions for perimeter and single pointer, removing the period incorrectly appearing at the end of the definition ([#4359](https://github.com/w3c/wcag/pull/4359))
+## Errata since 05 October 2023 Publication
+
+### Editorial Errata
+
+- **2024-11-22** Modifying visual presentation for content identified as New ([#1481](https://github.com/w3c/wcag/pull/1481), [#4145](https://github.com/w3c/wcag/pull/4145))
+- **2024-11-19** Making editorial changes to improve consistent use of the terms "success criteria/criterion", "web", "website", and "web page" ([#4080](https://github.com/w3c/wcag/pull/4080))
+- **2024-11-19** In the definition for single pointer, updating to further enumerate interaction types and distinguish input modalities. ([#4070](https://github.com/w3c/wcag/pull/4070), [#3536](https://github.com/w3c/wcag/pull/3536))
+- **2024-11-19** In 7. Input Purposes for User Interface Components, correcting the word "dissement" to "arrondissement". ([#4034](https://github.com/w3c/wcag/pull/4034))
+- **2024-11-19** In the definition for cognitive function test, updating the term from uppercase to lowercase. ([#3943](https://github.com/w3c/wcag/pull/3943))
+- **2024-11-19** In Abstract, modifying language regarding devices. ([#3776](https://github.com/w3c/wcag/pull/3776))
+- **2024-11-19** In 3.3.8 Accessible Authentication (Minimum) and the definitions for change of context, general flash and red flash thresholds, and structure, changing ordered lists to unordered lists when no order is intended. ([#3756](https://github.com/w3c/wcag/pull/3756))
+- **2024-11-19** In the definition for used in an unusual or restricted way, genericizing WCAG version reference from "2.1" to "2". ([#3707](https://github.com/w3c/wcag/pull/3707))
+- **2024-11-19** Removing the defunct "encloses" definition. ([#3636](https://github.com/w3c/wcag/pull/3636))
+- **2024-11-19** In 2.5.8 Target Size (Minimum), updating formatting, grammar, and punctuation of exceptions. ([#3189](https://github.com/w3c/wcag/pull/3189))
+- **2024-11-19** Making editorial changes to improve consistent use of definitions in the success criteria ([#3038](https://github.com/w3c/wcag/pull/3038))
+
+[Errata page](https://www.w3.org/WAI/WCAG22/errata/)

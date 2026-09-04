@@ -105,3 +105,19 @@ test('buildToolArgs: single required non-string param is not joined', () => {
   const args = buildToolArgs(numericSingleRequiredTool, ['1', '2'], {});
   assert.deepEqual(args, { count: 1 });
 });
+
+// An optional filter typed as a bare word: `wcag list-input-purposes tel` has
+// no required argument, so the positional went nowhere and the filter was
+// silently ignored. A property marked `positional: true` receives it.
+test('buildToolArgs: a `positional` optional string property takes the positionals when nothing is required', () => {
+  const tool = {
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', positional: true }, flag: { type: 'boolean' } },
+      required: [],
+    },
+  };
+  assert.deepEqual(buildToolArgs(tool, ['tel'], {}), { query: 'tel' });
+  assert.deepEqual(buildToolArgs(tool, ['credit', 'card'], { flag: true }), { query: 'credit card', flag: true });
+  assert.deepEqual(buildToolArgs(tool, [], {}), {});
+});

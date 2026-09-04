@@ -49,9 +49,16 @@ export function buildToolArgs(tool, positionals, flags) {
     if (t === 'number' || t === 'integer') return Number(v);
     return String(v);
   };
+  // An optional filter can also be typed as bare words when its property is
+  // marked `positional: true` and nothing is required (`list-input-purposes tel`).
+  const optionalPositional =
+    required.length === 0 &&
+    Object.keys(props).find((name) => props[name].positional && props[name].type === 'string');
   if (required.length === 1 && props[required[0]]?.type === 'string') {
     const name = required[0];
     if (positionals.length > 0) args[name] = coerce(props[name], positionals.join(' '));
+  } else if (optionalPositional) {
+    if (positionals.length > 0) args[optionalPositional] = coerce(props[optionalPositional], positionals.join(' '));
   } else {
     required.forEach((name, idx) => {
       if (positionals[idx] !== undefined) args[name] = coerce(props[name], positionals[idx]);

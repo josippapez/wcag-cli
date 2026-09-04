@@ -2,6 +2,7 @@
 import { tools } from '../src/tools.js';
 import { configureDataset } from '../src/helpers.js';
 import { parseArgv, buildToolArgs } from '../src/argparse.js';
+import { DEFAULT_VERSION, wcagUrls } from '../src/w3c.js';
 
 // `--refresh` is owned by the CLI, not by any command's inputSchema, so it is
 // lifted out of argv BEFORE parseArgv runs. That is the root fix rather than a
@@ -11,14 +12,25 @@ import { parseArgv, buildToolArgs } from '../src/argparse.js';
 // post-hoc repair could recover it because dispatch had already failed. Lifting
 // it also keeps multi-word positionals in their original order wherever the
 // flag was written.
+//
+// `--json` and `--wcag <version>` are lifted the same way and for the same
+// reason. `--wcag` is the one global that takes a value, so it consumes the
+// next token (or `--wcag=2.1`).
 function extractGlobalFlags(argv) {
-  const globals = { refresh: false };
+  const globals = { refresh: false, json: false, version: undefined };
   const rest = [];
-  for (const tok of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const tok = argv[i];
     if (tok === '--refresh') {
       globals.refresh = true;
     } else if (tok.startsWith('--refresh=')) {
       globals.refresh = tok.slice('--refresh='.length) !== 'false';
+    } else if (tok === '--json') {
+      globals.json = true;
+    } else if (tok === '--wcag') {
+      globals.version = argv[++i] ?? '';
+    } else if (tok.startsWith('--wcag=')) {
+      globals.version = tok.slice('--wcag='.length);
     } else {
       rest.push(tok);
     }
@@ -29,7 +41,7 @@ function extractGlobalFlags(argv) {
 function printCommandList() {
   const lines = tools.map((t) => `  ${t.name.padEnd(30)} ${t.description}`);
   process.stdout.write(
-    `wcag — WCAG 2.2 guidelines CLI\n\nUsage: wcag <command> [args] [--flags]\n       wcag <command> --help\n\nCommands:\n${lines.join('\n')}\n\nGlobal flags:\n  --refresh                      Re-fetch the WCAG dataset from w3.org before answering\n\nEnvironment:\n  WCAG_CLI_NO_NETWORK=1          Never touch the network; answer from cache or the bundled data\n`
+    `wcag — WCAG guidelines CLI (WCAG ${DEFAULT_VERSION} by default)\n\nUsage: wcag <command> [args] [--flags]\n       wcag <command> --help\n\nCommands:\n${lines.join('\n')}\n\nGlobal flags:\n  --json                         Print the structured data behind the answer as JSON instead of Markdown\n  --wcag <version>               Answer for another WCAG version, e.g. --wcag 2.1 (fetched from w3.org on first use)\n  --refresh                      Re-fetch the WCAG dataset from w3.org before answering\n\nEnvironment:\n  WCAG_CLI_VERSION=2.1           Default for --wcag\n  WCAG_CLI_NO_NETWORK=1          Never touch the network; answer from cache or the bundled data\n`
   );
 }
 
@@ -44,7 +56,11 @@ function printCommandHelp(tool) {
     out += 'Parameters:\n';
     for (const name of names) {
       const p = props[name];
-      const req = required.includes(name) ? ' (required, positional)' : ' (optional, --flag)';
+      const req = required.includes(name)
+        ? ' (required, positional)'
+        : p.positional
+          ? ' (optional, positional or --flag)'
+          : ' (optional, --flag)';
       const en = p.enum ? ` [${p.enum.join('|')}]` : '';
       out += `  ${name}${req}${en} — ${p.description ?? ''}\n`;
     }
@@ -131,12 +147,32 @@ async function main() {
   // reads WCAG_CLI_NO_NETWORK, so the data layer has no ambient behaviour of
   // its own — that ambient read is exactly what made the loader tests depend on
   // the shell they ran in.
+  //
+  // The version is validated here, before any lookup, so a typo like
+  // `--wcag 22` is a usage error and not a failed fetch of a URL that never
+  // existed. The flag wins over WCAG_CLI_VERSION, which wins over the default.
+  const version = globals.version ?? process.env.WCAG_CLI_VERSION ?? DEFAULT_VERSION;
+  try {
+    wcagUrls(version);
+  } catch (err) {
+    process.stderr.write(`wcag: ${err.message}\n`);
+    process.exit(1);
+    return;
+  }
   configureDataset({
     refresh: globals.refresh,
     noNetwork: process.env.WCAG_CLI_NO_NETWORK === '1',
+    version,
   });
 
   const res = await tool.handler(args);
+  if (globals.json) {
+    // Every command carries the structured payload its text was rendered
+    // from; the text itself is the fallback for any that does not.
+    const payload = res?.data ?? { text: res?.content?.[0]?.text ?? '' };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return;
+  }
   const text = res?.content?.[0]?.text ?? '';
   process.stdout.write(text.endsWith('\n') ? text : text + '\n');
 }

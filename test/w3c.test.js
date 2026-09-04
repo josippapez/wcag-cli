@@ -125,7 +125,15 @@ test('parseUnderstanding extracts brief goal/what-to-do/why-important keyed lowe
 test('parseUnderstanding degrades to empty shapes rather than throwing on unexpected HTML', () => {
   assert.doesNotThrow(() => parseUnderstanding('<html><body>not the expected template</body></html>'));
   const result = parseUnderstanding('');
-  assert.deepEqual(result, { brief: {}, intent: '', benefits: [], examples: [], resources: [] });
+  assert.deepEqual(result, {
+    brief: {},
+    intent: '',
+    benefits: [],
+    examples: [],
+    resources: [],
+    keyTerms: [],
+    testRules: [],
+  });
 });
 
 test('parseUnderstanding extracts examples from a flat <ul><li> shape, one per item in order', () => {

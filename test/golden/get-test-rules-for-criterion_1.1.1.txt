@@ -1,0 +1,13 @@
+# Test Rules for 1.1.1 Non-text Content
+
+Approved ACT test rules for aspects of this success criterion. Using them is not required for conformance; a rule marked (proposed) is still awaiting approval.
+
+- [Element marked as decorative is not exposed](https://www.w3.org/WAI/standards-guidelines/act/rules/46ca7f/)
+- [Image accessible name is descriptive](https://www.w3.org/WAI/standards-guidelines/act/rules/qt1vmo/)
+- [Image button has non-empty accessible name](https://www.w3.org/WAI/standards-guidelines/act/rules/59796f/)
+- [Image has non-empty accessible name](https://www.w3.org/WAI/standards-guidelines/act/rules/23a2a8/)
+- [Link has non-empty accessible name](https://www.w3.org/WAI/standards-guidelines/act/rules/c487ae/)
+- [Object element rendering non-text content has non-empty accessible name](https://www.w3.org/WAI/standards-guidelines/act/rules/8fc3b6/)
+- [SVG element with explicit role has non-empty accessible name](https://www.w3.org/WAI/standards-guidelines/act/rules/7d6734/)
+- [Image filename is accessible name for image](https://www.w3.org/WAI/standards-guidelines/act/rules/9eb3f6/proposed/) (proposed)
+- [Image not in the accessibility tree is decorative](https://www.w3.org/WAI/standards-guidelines/act/rules/e88epe/proposed/) (proposed)

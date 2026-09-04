@@ -4,11 +4,44 @@
 // known non-adversarial pages, build-time-only execution. See
 // .orchestration/own-wcag-data/issues/01-w3c-source-and-data-build.md for
 // the accepted decision against pulling in an HTML-parsing dependency.
+import { createRequire } from 'node:module';
 
-export const WCAG_JSON_URL = 'https://www.w3.org/WAI/WCAG22/wcag.json';
+// Every W3C URL is derived from the version, so a future WCAG 2.x is a flag
+// (`--wcag 2.3`), not a release of this package. W3C's layout has been stable
+// across 2.1 -> 2.2: `/WAI/WCAG<NN>/` for the supporting documents and
+// `/TR/WCAG<NN>/` for the Recommendation (verified for WCAG21 and WCAG22 on
+// 2026-09-04; WCAG20 has no wcag.json).
+export const DEFAULT_VERSION = '2.2';
+const VERSION_RE = /^\d+\.\d+$/;
+
+// Sent with every request. Cloudflare in front of w3.org answered Node's
+// default agent ("node") with 429 on 2026-09-04 while a descriptive agent got
+// 200 for the same URLs, so this is load-bearing, not politeness.
+const require = createRequire(import.meta.url);
+export const USER_AGENT = `wcag-cli/${require('../package.json').version} (+https://github.com/josippapez/wcag-cli)`;
+
+export function wcagUrls(version) {
+  if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+    throw new Error(`invalid WCAG version ${JSON.stringify(version)}: expected e.g. "2.2"`);
+  }
+  const nn = version.replace('.', '');
+  const wai = `https://www.w3.org/WAI/WCAG${nn}`;
+  return {
+    version,
+    wcagJson: `${wai}/wcag.json`,
+    understanding: (id) => `${wai}/Understanding/${id}.html`,
+    techniquesIndex: `${wai}/Techniques/`,
+    technique: (technology, id) => `${wai}/Techniques/${technology}/${id}`,
+    quickref: `${wai}/quickref/`,
+    spec: `https://www.w3.org/TR/WCAG${nn}/`,
+    errata: `${wai}/errata/`,
+  };
+}
+
+export const WCAG_JSON_URL = wcagUrls(DEFAULT_VERSION).wcagJson;
 
 export function understandingUrl(id) {
-  return `https://www.w3.org/WAI/WCAG22/Understanding/${id}.html`;
+  return wcagUrls(DEFAULT_VERSION).understanding(id);
 }
 
 // A small fixed table for the named entities that show up in W3C prose.
@@ -79,11 +112,12 @@ function stringify(html) {
 function stringifyBlocks(html) {
   const marked = unwrapAbbr(html)
     // W3C marks a note's label with `<p class="note-title marker">Note</p>`
-    // (sometimes `Note 1`). Flattened, that leaves the bare word on its own
+    // (sometimes `Note 1`); the Recommendation uses a `<div role="heading">`
+    // for the same label. Flattened, that leaves the bare word on its own
     // line with nothing to identify it as a label, so emphasise it in place.
     .replace(
-      /<p\b[^>]*class="[^"]*note-title[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
-      (_, label) => `<p>**${collapseSpace(stripTags(label))}**</p>`
+      /<(p|div)\b[^>]*class="[^"]*note-title[^"]*"[^>]*>([\s\S]*?)<\/\1>/gi,
+      (_, _tag, label) => `<p>**${collapseSpace(stripTags(label))}**</p>`
     )
     .replace(/<h[23]\b[^>]*>/gi, '\0')
     .replace(/<\/(p|li|dt|dd|h2|h3)>/gi, '$&\0');
@@ -224,7 +258,43 @@ function extractResources(sectionHtml) {
   return resources;
 }
 
-// Parses one Understanding page into { brief, intent, benefits, examples, resources }.
+// Key Terms: `<dt id="dfn-slug">term</dt>` pairs. W3C computes this list
+// transitively (terms used in the definitions of linked terms), which is why it
+// is longer than the anchors in the criterion text alone.
+function extractKeyTerms(sectionHtml) {
+  const out = [];
+  const dtRe = /<dt\b[^>]*\bid=["'](dfn-[^"']+)["'][^>]*>([\s\S]*?)<\/dt>/gi;
+  let m;
+  while ((m = dtRe.exec(sectionHtml))) {
+    const name = stringify(m[2]);
+    if (name) out.push({ id: m[1], name });
+  }
+  return out;
+}
+
+// Test Rules: ACT rules W3C has approved for this criterion, linked as
+// `/WAI/standards-guidelines/act/rules/<id>/` with `/proposed/` appended while
+// a rule is still awaiting approval.
+function extractTestRules(sectionHtml) {
+  const out = [];
+  const liRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let li;
+  while ((li = liRe.exec(sectionHtml))) {
+    const a = /<a\s+href=["']([^"']*\/act\/rules\/([a-z0-9]+)\/(proposed\/)?)["'][^>]*>([\s\S]*?)<\/a>/i.exec(li[1]);
+    if (!a) continue;
+    const href = decodeEntities(a[1]);
+    out.push({
+      id: a[2],
+      title: stringify(a[4]),
+      url: href.startsWith('/') ? `https://www.w3.org${href}` : href,
+      proposed: Boolean(a[3]),
+    });
+  }
+  return out;
+}
+
+// Parses one Understanding page into
+// { brief, intent, benefits, examples, resources, keyTerms, testRules }.
 // Must never throw on unexpected HTML: each section is independently
 // optional and degrades to its empty shape ({} / '' / [] / [] / []) so the
 // caller's own fail-loud check (no Intent parsed) is what decides whether
@@ -252,5 +322,213 @@ export function parseUnderstanding(html, handle) {
   const resourcesHtml = extractSection(html, 'resources');
   if (resourcesHtml) resources = extractResources(resourcesHtml);
 
-  return { brief, intent, benefits, examples, resources };
+  const keyTermsHtml = extractSection(html, 'key-terms');
+  const keyTerms = keyTermsHtml ? extractKeyTerms(keyTermsHtml) : [];
+
+  const testRulesHtml = extractSection(html, 'test-rules');
+  const testRules = testRulesHtml ? extractTestRules(testRulesHtml) : [];
+
+  return { brief, intent, benefits, examples, resources, keyTerms, testRules };
+}
+
+// ============================================================================
+// TECHNIQUES
+// ============================================================================
+
+// The techniques index lists every published technique as
+// `<li><a href="<technology>/<ID>">ID: Title</a></li>`. It is the only source
+// that also covers techniques no success criterion references (10 of 432 on
+// 2026-09-04), which wcag.json cannot know about.
+export function parseTechniqueIndex(html) {
+  const out = [];
+  const seen = new Set();
+  const aRe = /<a\s+href=["'](?:\.\.\/)?([a-z-]+)\/([A-Z]+\d+)["'][^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = aRe.exec(html))) {
+    const [, technology, id, inner] = m;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const title = stringify(inner).replace(new RegExp(`^${id}:\\s*`), '');
+    out.push({ id, technology, title });
+  }
+  return out;
+}
+
+// `<pre>` holds code samples: entity-encoded, wrapped in highlighter spans,
+// and the one place where line breaks are content. Lift them out before the
+// generic flattener runs, and put them back as `{ code }` blocks.
+function extractCodeBlocks(html) {
+  const codes = [];
+  const marked = html.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_, inner) => {
+    const code = decodeEntities(stripTags(inner))
+      .replace(/\r\n?/g, '\n')
+      .replace(/^\n+|\s+$/g, '');
+    // W3C tags the language on the inner <code class="language-html hljs">;
+    // it becomes the fence's info string so the sample renders highlighted.
+    const lang = /<code\b[^>]*class=["'][^"']*\blanguage-([a-z0-9]+)/i.exec(inner)?.[1] ?? '';
+    codes.push({ code, lang });
+    return `<p>${codes.length - 1}</p>`;
+  });
+  return { marked, codes };
+}
+
+// Paragraphs and list items as prose blocks, `<pre>` as `{ code }` blocks,
+// headings dropped. Used for technique descriptions and examples, where a code
+// sample in the middle of the prose is the norm rather than the exception.
+function stringifyMixedBlocks(html) {
+  const { marked, codes } = extractCodeBlocks(
+    html.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, '')
+  );
+  return stringifyBlocks(marked).map((block) => {
+    const m = /^(\d+)$/.exec(block);
+    return m ? codes[Number(m[1])] : block;
+  });
+}
+
+// Related techniques link as `../<technology>/<ID>`; only the id is kept, the
+// title comes from the index at render time so it can never go stale.
+function extractRelatedTechniques(sectionHtml) {
+  const ids = [];
+  const aRe = /<a\s+href=["'][^"']*\/([A-Z]+\d+)["']/g;
+  let m;
+  while ((m = aRe.exec(sectionHtml))) if (!ids.includes(m[1])) ids.push(m[1]);
+  return ids;
+}
+
+// Parses one technique page into
+// { applicability, description, examples, tests, related, resources }.
+// Never throws on unexpected HTML: each section degrades to its empty shape.
+export function parseTechnique(html) {
+  // "About this Technique" is two paragraphs: the criteria it relates to
+  // (already known from wcag.json) and what it applies to. Keep the latter.
+  const about = extractSection(html, 'technique');
+  const applicability = about
+    ? stringifyBlocks(about)
+        .filter((b) => !/^About this Technique$/i.test(b) && !/^This technique (relates to|is not referenced)/i.test(b))
+        .join(' ')
+    : '';
+
+  const descriptionHtml = extractSection(html, 'description');
+  const description = descriptionHtml ? stringifyMixedBlocks(descriptionHtml) : [];
+
+  const examples = [];
+  const examplesHtml = extractSection(html, 'examples');
+  if (examplesHtml) {
+    const exRe = /<section\b[^>]*class=["'][^"']*\bexample\b[^"']*["'][^>]*>([\s\S]*?)<\/section>/gi;
+    let m;
+    while ((m = exRe.exec(examplesHtml))) {
+      const heading = /<h[2-6]\b[^>]*>([\s\S]*?)<\/h[2-6]>/i.exec(m[1]);
+      examples.push({
+        title: heading ? stringify(heading[1]) : `Example ${examples.length + 1}`,
+        blocks: stringifyMixedBlocks(m[1]),
+      });
+    }
+    // A handful of pages list examples without `section.example` wrappers.
+    if (examples.length === 0) {
+      const blocks = stringifyMixedBlocks(examplesHtml);
+      if (blocks.length) examples.push({ title: 'Examples', blocks });
+    }
+  }
+
+  const tests = { procedure: [], expectedResults: [] };
+  const procedureHtml = extractSection(html, 'procedure');
+  if (procedureHtml) tests.procedure = stringifyMixedBlocks(procedureHtml);
+  const resultsHtml = extractSection(html, 'expected-results');
+  if (resultsHtml) tests.expectedResults = stringifyMixedBlocks(resultsHtml);
+
+  const relatedHtml = extractSection(html, 'related');
+  const related = relatedHtml ? extractRelatedTechniques(relatedHtml) : [];
+
+  const resourcesHtml = extractSection(html, 'resources');
+  const resources = resourcesHtml ? extractResources(resourcesHtml) : [];
+
+  return { applicability, description, examples, tests, related, resources };
+}
+
+// ============================================================================
+// THE RECOMMENDATION (TR): what wcag.json leaves out
+// ============================================================================
+
+// wcag.json carries principles, criteria and the glossary, but not section 5
+// (conformance) or section 7 (the input-purpose tokens behind 1.3.5). Both
+// live only in the Recommendation's HTML.
+export function parseSpecExtras(html) {
+  const conformanceRequirements = [];
+  const reqsHtml = extractSection(html, 'conformance-reqs');
+  if (reqsHtml) {
+    const secRe = /<section\b[^>]*\bid=["'](cc\d+)["']/g;
+    let m;
+    while ((m = secRe.exec(reqsHtml))) {
+      const body = extractSection(reqsHtml, m[1]);
+      if (!body) continue;
+      const heading = /<h[2-6]\b[^>]*>([\s\S]*?)<\/h[2-6]>/i.exec(body);
+      const headingText = heading ? stringify(heading[1]) : '';
+      const numMatch = /^(\d+(?:\.\d+)*)\s+(.*)$/.exec(headingText);
+      conformanceRequirements.push({
+        id: m[1],
+        num: numMatch ? numMatch[1] : '',
+        title: numMatch ? numMatch[2] : headingText,
+        blocks: stringifyBlocks(
+          body.replace(/<div\b[^>]*class=["']header-wrapper["'][^>]*>[\s\S]*?<\/div>/i, '')
+        ),
+      });
+    }
+  }
+
+  const inputPurposes = [];
+  const purposesHtml = extractSection(html, 'input-purposes');
+  if (purposesHtml) {
+    const liRe = /<li\b[^>]*>\s*<code\b[^>]*>([\s\S]*?)<\/code>\s*[-–—]\s*([\s\S]*?)<\/li>/gi;
+    let m;
+    while ((m = liRe.exec(purposesHtml))) {
+      inputPurposes.push({ token: stringify(m[1]), description: stringify(m[2]) });
+    }
+  }
+
+  return { conformanceRequirements, inputPurposes };
+}
+
+// ============================================================================
+// ERRATA
+// ============================================================================
+
+// The errata page is `<h2>Errata since <a>PUBLICATION</a></h2>` groups, each
+// with `<h3>KIND</h3>` and a list of `YYYY-MM-DD: text (#PR, #PR)` items. The
+// nav's table of contents repeats the headings as links, so only items that
+// open with a date count.
+export function parseErrata(html) {
+  const out = [];
+  const body = html.replace(/<nav\b[\s\S]*?<\/nav>/gi, '');
+  const tokenRe = /<h2\b[^>]*>([\s\S]*?)<\/h2>|<h3\b[^>]*>([\s\S]*?)<\/h3>|<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let since = '';
+  let kind = '';
+  let m;
+  while ((m = tokenRe.exec(body))) {
+    if (m[1] !== undefined) {
+      since = stringify(m[1]).replace(/^Errata since\s+/i, '');
+      kind = '';
+      continue;
+    }
+    if (m[2] !== undefined) {
+      kind = stringify(m[2]);
+      continue;
+    }
+    const item = m[3];
+    const changes = [];
+    const aRe = /<a\s+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let a;
+    while ((a = aRe.exec(item))) {
+      if (/^#\d+$/.test(stringify(a[2]))) changes.push(decodeEntities(a[1]));
+    }
+    const dated = /^(\d{4}-\d{2}-\d{2}):\s*(.*)$/.exec(stringify(item));
+    if (!dated) continue;
+    out.push({
+      date: dated[1],
+      kind,
+      since,
+      text: dated[2].replace(/\s*\((?:#\d+(?:,\s*)?)+\)\s*$/, '').trim(),
+      changes,
+    });
+  }
+  return out;
 }

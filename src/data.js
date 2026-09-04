@@ -12,9 +12,22 @@ import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { WCAG_JSON_URL, understandingUrl, parseUnderstanding } from './w3c.js';
+import { DEFAULT_VERSION, USER_AGENT, wcagUrls, parseUnderstanding } from './w3c.js';
 
 export const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
+
+// The bundle is WCAG 2.2 data. Any other version has no floor: it is served
+// from the cache once fetched, and an offline first run for it is an error
+// rather than a silent answer from the wrong specification.
+const isBundledVersion = (version) => version === DEFAULT_VERSION;
+
+// The default version keeps the directory every existing install already has;
+// other versions get a subdirectory so their files can never be mistaken for
+// 2.2 data by an older CLI reading the same cache.
+export function versionCacheDir(base, version) {
+  if (!base) return null;
+  return isBundledVersion(version) ? base : join(base, version);
+}
 
 // A lookup must not stall: bound every network attempt so a blackholed
 // socket or hung origin can't hold a CLI invocation open while the bundled
@@ -140,6 +153,17 @@ function readBundledUnderstanding(num) {
     : null;
 }
 
+// The other bundled files (techniques-index, techniques, spec, errata), parsed
+// once and memoised; null when the file is absent so a partial `data/` still
+// leaves every other command working.
+const bundledResourceCache = new Map();
+export function bundledResource(name) {
+  if (!bundledResourceCache.has(name)) {
+    bundledResourceCache.set(name, readJsonSafe(bundledPath(`${name}.json`)));
+  }
+  return bundledResourceCache.get(name);
+}
+
 function findCriterion(num) {
   const wcag = readBundledWcag();
   for (const principle of wcag.principles ?? []) {
@@ -178,13 +202,13 @@ function stripFetchedAt({ fetchedAt, ...rest }) {
 // (fetchedAt) on a 304; never rewrite the body file. `res.text()` resolves
 // to '' on a 304 without throwing, but JSON.parse('') throws, so the body is
 // only ever read on a genuine 200.
-async function tryFetchWcag({ fetchImpl, validator, paths, now }) {
+async function tryFetchWcag({ fetchImpl, validator, paths, now, url }) {
   try {
-    const headers = {};
+    const headers = { 'User-Agent': USER_AGENT };
     if (validator?.meta?.etag) headers['If-None-Match'] = validator.meta.etag;
     else if (validator?.meta?.lastModified) headers['If-Modified-Since'] = validator.meta.lastModified;
 
-    const res = await fetchImpl(WCAG_JSON_URL, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
     if (res.status === 304) {
       if (!validator) return null;
@@ -216,7 +240,7 @@ async function tryFetchWcag({ fetchImpl, validator, paths, now }) {
     // report a complete dataset before the first refresh and a partial one
     // after it.
     const meta = {
-      source: WCAG_JSON_URL,
+      source: url,
       etag: res.headers.get('etag') ?? null,
       lastModified: res.headers.get('last-modified') ?? null,
       criteria: countCriteria(body),
@@ -234,11 +258,10 @@ async function tryFetchWcag({ fetchImpl, validator, paths, now }) {
   }
 }
 
-async function tryFetchUnderstanding({ fetchImpl, num, path, now }) {
-  const criterion = findCriterion(num);
-  if (!criterion) return null;
+async function tryFetchUnderstanding({ fetchImpl, num, path, now, url }) {
   try {
-    const res = await fetchImpl(understandingUrl(criterion.id), {
+    const res = await fetchImpl(url, {
+      headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
@@ -248,7 +271,7 @@ async function tryFetchUnderstanding({ fetchImpl, num, path, now }) {
     }
 
     const html = await res.text();
-    const parsed = parseUnderstanding(html, criterion.handle);
+    const parsed = parseUnderstanding(html);
     if (!parsed.intent) {
       note(`wcag-cli: understanding refresh for ${num} returned no intent text; using cached data`);
       return null;
@@ -278,8 +301,11 @@ export async function loadDataset({
   now = Date.now(),
   refresh = false,
   noNetwork = false,
-  cacheDir = CACHE_DIR,
+  version = DEFAULT_VERSION,
+  cacheDir = versionCacheDir(CACHE_DIR, version),
 } = {}) {
+  const url = wcagUrls(version).wcagJson;
+  const bundledFloor = isBundledVersion(version);
   const paths = cacheDir ? wcagCachePaths(cacheDir) : null;
   const cachedMeta = paths ? readJsonSafe(paths.meta) : null;
   const cachedBody = paths ? readJsonSafe(paths.wcag) : null;
@@ -305,12 +331,12 @@ export async function loadDataset({
     // ETag/Last-Modified it was captured under, so an install older than the
     // TTL can still turn "W3C hasn't republished" into an empty 304 instead
     // of a full ~500K download.
-    const bundled = bundledMeta();
+    const bundled = bundledFloor ? bundledMeta() : null;
     const validator =
       cachedBody && cachedMeta
         ? { meta: cachedMeta, body: cachedBody, onDisk: true }
         : bundled && { meta: bundled, body: readBundledWcag(), readText: readBundledWcagText, onDisk: false };
-    const fetched = await tryFetchWcag({ fetchImpl, validator, paths, now });
+    const fetched = await tryFetchWcag({ fetchImpl, validator, paths, now, url });
     if (fetched && fetched.wcag) return fetched;
   }
 
@@ -318,6 +344,12 @@ export async function loadDataset({
     return { wcag: cachedBody, meta: cachedMeta };
   }
 
+  if (!bundledFloor) {
+    throw new Error(
+      `no local data for WCAG ${version}: only WCAG ${DEFAULT_VERSION} is bundled, so the first ` +
+        `\`--wcag ${version}\` run needs network access to fetch ${url}`
+    );
+  }
   return { wcag: readBundledWcag(), meta: bundledMeta() };
 }
 
@@ -334,13 +366,18 @@ export async function loadUnderstanding(num, {
   now = Date.now(),
   refresh = false,
   noNetwork = false,
-  cacheDir = CACHE_DIR,
+  version = DEFAULT_VERSION,
+  cacheDir = versionCacheDir(CACHE_DIR, version),
+  // The criterion's W3C id (the Understanding page's file name). Callers that
+  // have the loaded dataset pass it; the bundle answers for 2.2 otherwise.
+  id = findCriterion(num)?.id,
 } = {}) {
+  const bundledFloor = isBundledVersion(version);
   // `num` ends up in a cache file path -- reject anything that isn't a
   // dotted-numeric criterion id before it ever reaches the filesystem or a
   // URL, rather than trusting the caller.
   if (typeof num !== 'string' || !CRITERION_NUM_RE.test(num)) {
-    return readBundledUnderstanding(num);
+    return bundledFloor ? readBundledUnderstanding(num) : null;
   }
 
   const path = cacheDir ? understandingCachePath(cacheDir, num) : null;
@@ -355,12 +392,80 @@ export async function loadUnderstanding(num, {
   // its own week. Still strictly lazy -- one page for the criterion actually
   // asked for, never the whole corpus -- so a first run costs one request per
   // criterion someone actually reads, not 87.
-  if (!noNetwork && path) {
-    const fetched = await tryFetchUnderstanding({ fetchImpl, num, path, now });
+  if (!noNetwork && path && id) {
+    const url = wcagUrls(version).understanding(id);
+    const fetched = await tryFetchUnderstanding({ fetchImpl, num, path, now, url });
     if (fetched) return fetched;
   }
 
   if (cached) return stripFetchedAt(cached);
 
-  return readBundledUnderstanding(num);
+  return bundledFloor ? readBundledUnderstanding(num) : null;
+}
+
+// ============================================================================
+// GENERIC CACHED RESOURCES
+// ============================================================================
+
+// Anything past wcag.json and the Understanding pages -- the techniques index,
+// one technique page, the Recommendation's conformance section, the errata --
+// follows one rule: fresh cache -> conditional-free fetch + parse + validate ->
+// stale cache -> bundled floor -> null. The cache entry wraps the parsed data
+// with its provenance so a future format change is detectable, and validation
+// runs BEFORE the write so a lie-shaped 200 (WAF page, template change) is
+// never cached for a week. A resource this loader cannot resolve is `null`,
+// never an exception: the command renders "unavailable" and the CLI still
+// answers everything else.
+const RESOURCE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+
+export async function loadResource(
+  name,
+  {
+    url,
+    parse,
+    validate = () => true,
+    bundled = () => null,
+    fetchImpl = fetch,
+    now = Date.now(),
+    refresh = false,
+    noNetwork = false,
+    version = DEFAULT_VERSION,
+    cacheDir = versionCacheDir(CACHE_DIR, version),
+  }
+) {
+  if (typeof name !== 'string' || !RESOURCE_NAME_RE.test(name)) {
+    throw new Error(`invalid resource name ${JSON.stringify(name)}`);
+  }
+  const path = cacheDir ? join(cacheDir, `${name}.json`) : null;
+  const cached = path ? readJsonSafe(path) : null;
+  const cachedData = cached && 'data' in cached ? cached.data : null;
+
+  if (cachedData !== null && !refresh && !isStale(cached.fetchedAt, now)) {
+    return cachedData;
+  }
+
+  if (!noNetwork && path) {
+    try {
+      const res = await fetchImpl(url, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        note(`wcag-cli: ${name} refresh failed (HTTP ${res.status}); using local data`);
+      } else {
+        const data = parse(await res.text());
+        if (!validate(data)) {
+          note(`wcag-cli: ${name} refresh returned unexpected content; using local data`);
+        } else {
+          writeJsonSafe(path, { source: url, fetchedAt: new Date(now).toISOString(), data });
+          return data;
+        }
+      }
+    } catch (err) {
+      note(`wcag-cli: ${name} refresh failed (${err.message}); using local data`);
+    }
+  }
+
+  if (cachedData !== null) return cachedData;
+  return bundled() ?? null;
 }

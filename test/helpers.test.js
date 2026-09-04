@@ -370,9 +370,15 @@ test('the loader runs exactly once even when many helpers await concurrently', a
   writeFileSync(join(cacheDir, 'wcag.json'), JSON.stringify(cachedBody));
   writeFileSync(join(cacheDir, 'meta.json'), JSON.stringify(cachedMeta));
 
+  // Two resources load here: wcag.json (one conditional GET, answered 304)
+  // and the W3C techniques index that getAllTechniques merges in (one GET,
+  // answered with a page listing only T1). Anything else is a leak.
   let fetchCount = 0;
-  const fetchImpl = async () => {
+  const fetchImpl = async (url) => {
     fetchCount++;
+    if (url.endsWith('/Techniques/')) {
+      return { status: 200, ok: true, headers: { get: () => null }, text: async () => '<a href="html/T1">T1: one</a>' };
+    }
     return { status: 304, ok: false, headers: { get: () => null }, text: async () => '' };
   };
 
@@ -388,7 +394,7 @@ test('the loader runs exactly once even when many helpers await concurrently', a
     getAllTechniques(),
   ]);
 
-  assert.equal(fetchCount, 1, `expected exactly one load, got ${fetchCount}`);
+  assert.equal(fetchCount, 2, `expected one dataset load and one index load, got ${fetchCount}`);
   assert.equal(principles[0].handle, 'Perceivable');
   assert.equal(terms[0].name, 'thing');
   assert.equal(meta.etag, 'W/"stale"');
@@ -399,7 +405,7 @@ test('the loader runs exactly once even when many helpers await concurrently', a
   assert.equal(techniquesA, techniquesB);
   assert.equal(techniquesA, await getAllTechniques());
   assert.deepEqual(techniquesA.map((tech) => tech.id), ['T1']);
-  assert.equal(fetchCount, 1, 'a later getAllTechniques() must not re-load the dataset');
+  assert.equal(fetchCount, 2, 'a later getAllTechniques() must not re-load the dataset or the index');
 
   // Restore the default (bundled, offline) configuration for later tests.
   useBundledDataset();

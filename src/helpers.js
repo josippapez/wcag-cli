@@ -13,7 +13,22 @@
 // two different versions of the data mid-render.
 import { createRequire } from 'node:module';
 
-import { loadDataset, loadUnderstanding } from './data.js';
+import {
+  loadDataset,
+  loadUnderstanding,
+  loadResource,
+  bundledResource,
+  versionCacheDir,
+  CACHE_DIR,
+} from './data.js';
+import {
+  DEFAULT_VERSION,
+  wcagUrls,
+  parseTechniqueIndex,
+  parseTechnique,
+  parseSpecExtras,
+  parseErrata,
+} from './w3c.js';
 
 const require = createRequire(import.meta.url);
 
@@ -22,25 +37,63 @@ const require = createRequire(import.meta.url);
 // ============================================================================
 
 // Set once by bin/wcag.js before the first lookup, and passed straight through
-// to the loaders: `{ refresh, noNetwork }`. Both come from the CLI boundary —
-// this layer reads no environment of its own.
+// to the loaders: `{ refresh, noNetwork, version }`. All come from the CLI
+// boundary — this layer reads no environment of its own.
 let loadOptions = {};
 let datasetPromise;
 let techniquesPromise;
+let techniqueIndexPromise;
+let specPromise;
+let errataPromise;
 const understandingCache = new Map();
 const localUnderstandingCache = new Map();
+const techniqueBodyCache = new Map();
+const localTechniqueBodyCache = new Map();
 
 export function configureDataset(options = {}) {
   loadOptions = options;
   datasetPromise = undefined;
   techniquesPromise = undefined;
+  techniqueIndexPromise = undefined;
+  specPromise = undefined;
+  errataPromise = undefined;
   understandingCache.clear();
   localUnderstandingCache.clear();
+  techniqueBodyCache.clear();
+  localTechniqueBodyCache.clear();
+}
+
+/** The WCAG version every lookup in this process answers for. */
+export function getVersion() {
+  return loadOptions.version ?? DEFAULT_VERSION;
+}
+
+/** The W3C URLs for that version. */
+export function urls() {
+  return wcagUrls(getVersion());
+}
+
+// Loader options with the version resolved, so every loader agrees on the
+// cache directory without each caller re-deriving it. `cacheDir: null` from a
+// test stays null (bundle only); an unset one follows the version.
+function loaderOptions(overrides = {}) {
+  const version = getVersion();
+  const cacheDir = 'cacheDir' in loadOptions ? loadOptions.cacheDir : versionCacheDir(CACHE_DIR, version);
+  return { ...loadOptions, version, cacheDir, ...overrides };
+}
+
+// Bulk readers (search, counts) must never fan out into hundreds of requests,
+// so they use these: whatever is local -- runtime cache, then bundle.
+const localOnly = { refresh: false, noNetwork: true };
+
+// The bundle is 2.2 data, so it is only a floor for 2.2.
+function bundledFloor(name) {
+  return getVersion() === DEFAULT_VERSION ? bundledResource(name) : null;
 }
 
 /** Resolved `{ wcag, meta }` — one snapshot per process. */
 export function dataset() {
-  datasetPromise ??= loadDataset(loadOptions);
+  datasetPromise ??= loadDataset(loaderOptions());
   return datasetPromise;
 }
 
@@ -65,9 +118,17 @@ export async function getMeta() {
  */
 export function getUnderstanding(num) {
   if (!understandingCache.has(num)) {
-    understandingCache.set(num, loadUnderstanding(num, loadOptions));
+    understandingCache.set(num, loadUnderstandingFor(num, loaderOptions()));
   }
   return understandingCache.get(num);
+}
+
+// The Understanding page is named by the criterion's W3C id, which comes from
+// the dataset actually loaded -- not the bundle -- so a `--wcag 2.1` lookup
+// resolves against 2.1's own criteria.
+async function loadUnderstandingFor(num, options) {
+  const found = await findSuccessCriterion(num);
+  return loadUnderstanding(num, { ...options, id: found?.sc.id });
 }
 
 /**
@@ -81,10 +142,7 @@ export function getUnderstanding(num) {
  */
 export function getUnderstandingLocal(num) {
   if (!localUnderstandingCache.has(num)) {
-    localUnderstandingCache.set(
-      num,
-      loadUnderstanding(num, { ...loadOptions, refresh: false, noNetwork: true })
-    );
+    localUnderstandingCache.set(num, loadUnderstandingFor(num, loaderOptions(localOnly)));
   }
   return localUnderstandingCache.get(num);
 }
@@ -186,20 +244,21 @@ export function truncate(text, max) {
 // URLS
 // ============================================================================
 
+// All derived from the configured version, so `--wcag 2.1` links to 2.1 pages.
 export function getScUrl(sc) {
-  return `https://www.w3.org/TR/WCAG22/#${sc.id}`;
+  return `${urls().spec}#${sc.id}`;
 }
 
 export function getUnderstandingUrl(sc) {
-  return `https://www.w3.org/WAI/WCAG22/Understanding/${sc.id}.html`;
+  return urls().understanding(sc.id);
 }
 
 export function getQuickRefUrl(sc) {
-  return `https://www.w3.org/WAI/WCAG22/quickref/#${sc.id}`;
+  return `${urls().quickref}#${sc.id}`;
 }
 
 export function getTermUrl(term) {
-  return `https://www.w3.org/TR/WCAG22/#${term.id}`;
+  return `${urls().spec}#${term.id}`;
 }
 
 // ============================================================================
@@ -208,7 +267,11 @@ export function getTermUrl(term) {
 
 // 4.1.1 Parsing carries `level: ""` in the W3C data because it was removed in
 // WCAG 2.2. Rendering that raw produced an empty "**Level:** " line and a
-// "**Level **: 1" count bucket; both now say so explicitly.
+// "**Level **: 1" count bucket; both now say so explicitly. The label follows
+// the configured version so a criterion a later version drops reads correctly.
+export function removedLevelLabel() {
+  return `Removed in WCAG ${getVersion()}`;
+}
 export const REMOVED_LEVEL_LABEL = 'Removed in WCAG 2.2';
 
 export function isRemoved(sc) {
@@ -217,12 +280,12 @@ export function isRemoved(sc) {
 
 /** The value for a "**Level:**" field. */
 export function levelValue(sc) {
-  return isRemoved(sc) ? REMOVED_LEVEL_LABEL : sc.level;
+  return isRemoved(sc) ? removedLevelLabel() : sc.level;
 }
 
 /** The parenthesised label used in list rows, e.g. "(Level AA)". */
 export function levelTag(sc) {
-  return isRemoved(sc) ? REMOVED_LEVEL_LABEL : `Level ${sc.level}`;
+  return isRemoved(sc) ? removedLevelLabel() : `Level ${sc.level}`;
 }
 
 // ============================================================================
@@ -334,6 +397,16 @@ export async function getAllTechniques() {
       }
     }
 
+    // The W3C index is the authority on what exists: it also lists techniques
+    // no criterion references (10 of 432 on 2026-09-04), which the walk above
+    // cannot see. Merge it in with empty type/criteria sets; when the index is
+    // unavailable the walk alone still answers, as it always did.
+    for (const entry of (await getTechniqueIndex()) ?? []) {
+      if (!techniquesMap.has(entry.id)) {
+        techniquesMap.set(entry.id, { ...entry, types: new Set(), criteria: new Set() });
+      }
+    }
+
     return Array.from(techniquesMap.values()).map((t) => ({
       ...t,
       types: Array.from(t.types),
@@ -343,9 +416,82 @@ export async function getAllTechniques() {
   return techniquesPromise;
 }
 
+/** `[{ id, technology, title }]` for every published technique, or null. */
+export function getTechniqueIndex() {
+  techniqueIndexPromise ??= loadResource('techniques-index', {
+    ...loaderOptions(),
+    url: urls().techniquesIndex,
+    parse: parseTechniqueIndex,
+    validate: (list) => list.length > 0,
+    bundled: () => bundledFloor('techniques-index'),
+  });
+  return techniqueIndexPromise;
+}
+
 export async function findTechnique(id) {
   const all = await getAllTechniques();
   return all.find((t) => t.id.toLowerCase() === id.toLowerCase());
+}
+
+// The body of one technique page: `{ applicability, description, examples,
+// tests, related, resources }`, or null. Lazy and per technique, like the
+// Understanding pages: only the technique asked for is ever fetched.
+function loadTechniqueBody(id, options) {
+  return (async () => {
+    const technique = await findTechnique(id);
+    if (!technique) return null;
+    return loadResource(`techniques/${technique.id}`, {
+      ...options,
+      url: urls().technique(technique.technology, technique.id),
+      parse: parseTechnique,
+      validate: (body) => body.description.length > 0 || body.examples.length > 0,
+      bundled: () => bundledFloor('techniques')?.[technique.id] ?? null,
+    });
+  })();
+}
+
+export function getTechniqueBody(id) {
+  const key = id.toUpperCase();
+  if (!techniqueBodyCache.has(key)) techniqueBodyCache.set(key, loadTechniqueBody(id, loaderOptions()));
+  return techniqueBodyCache.get(key);
+}
+
+/** Same shape, guaranteed local: bulk readers use this so a search over 432
+ * techniques can never become 432 requests. */
+export function getTechniqueBodyLocal(id) {
+  const key = id.toUpperCase();
+  if (!localTechniqueBodyCache.has(key)) {
+    localTechniqueBodyCache.set(key, loadTechniqueBody(id, loaderOptions(localOnly)));
+  }
+  return localTechniqueBodyCache.get(key);
+}
+
+// ============================================================================
+// THE RECOMMENDATION AND ITS ERRATA
+// ============================================================================
+
+/** `{ conformanceRequirements, inputPurposes }` from the Recommendation, or null. */
+export function getSpecExtras() {
+  specPromise ??= loadResource('spec', {
+    ...loaderOptions(),
+    url: urls().spec,
+    parse: parseSpecExtras,
+    validate: (spec) => spec.conformanceRequirements.length > 0,
+    bundled: () => bundledFloor('spec'),
+  });
+  return specPromise;
+}
+
+/** The errata list, newest first as W3C publishes it, or null. */
+export function getErrata() {
+  errataPromise ??= loadResource('errata', {
+    ...loaderOptions(),
+    url: urls().errata,
+    parse: parseErrata,
+    validate: Array.isArray,
+    bundled: () => bundledFloor('errata'),
+  });
+  return errataPromise;
 }
 
 /** Flat, de-duplicated `{id, title, technology}` list for one technique type. */
@@ -392,16 +538,27 @@ export async function searchTerms(query) {
 export async function relatedTerms(sc) {
   const terms = await getTerms();
   const byId = new Map(terms.map((t) => [t.id, t]));
+  const byName = new Map(terms.map((t) => [t.name.toLowerCase(), t]));
   const html = [sc.content ?? '', ...(sc.details ?? []).flatMap(detailHtml)].join(' ');
 
   const found = [];
   const seen = new Set();
-  for (const match of html.matchAll(/#(dfn-[a-z0-9-]+)/gi)) {
-    const id = match[1].toLowerCase();
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const term = byId.get(id);
-    if (term) found.push(term);
+  const add = (term) => {
+    if (!term || seen.has(term.id)) return;
+    seen.add(term.id);
+    found.push(term);
+  };
+  for (const match of html.matchAll(/#(dfn-[a-z0-9-]+)/gi)) add(byId.get(match[1].toLowerCase()));
+  // W3C's Key Terms list is the transitive closure (terms used inside the
+  // definitions of linked terms), so it extends the direct anchors above --
+  // 13 for 2.5.8 where the criterion text alone links 7. The Understanding
+  // page keys them by a singular anchor (`dfn-assistive-technology`) where
+  // wcag.json uses the plural (`dfn-assistive-technologies`), so fall back to
+  // the displayed name. Local only: this is called from bulk paths and must
+  // not trigger a page fetch.
+  const understanding = await getUnderstandingLocal(sc.num);
+  for (const term of understanding?.keyTerms ?? []) {
+    add(byId.get(term.id.toLowerCase()) ?? byName.get(term.name.toLowerCase()));
   }
   return found;
 }
@@ -426,12 +583,28 @@ export async function getNewInVersion(version) {
   });
 }
 
+/**
+ * Criteria a version dropped. W3C keeps a removed criterion in the list with
+ * an empty level, its old number, and `versions` stopping before the version
+ * that dropped it (4.1.1 Parsing: level "", versions 2.0 and 2.1) -- the same
+ * signal `isRemoved` renders.
+ */
+export async function getRemovedInVersion(version) {
+  const all = await getAllSuccessCriteria();
+  return all.filter((sc) => isRemoved(sc) && !(sc.versions ?? []).includes(version));
+}
+
 // ============================================================================
 // RESPONSE
 // ============================================================================
 
-export function textResponse(text) {
-  return { content: [{ type: 'text', text }] };
+// `data` is the structured payload the text was rendered from; `--json`
+// prints it instead of the Markdown. Undefined when a command has nothing
+// beyond the text (the CLI then wraps the text itself).
+export function textResponse(text, data) {
+  const res = { content: [{ type: 'text', text }] };
+  if (data !== undefined) res.data = data;
+  return res;
 }
 
 // ============================================================================

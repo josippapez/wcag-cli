@@ -1,6 +1,6 @@
 # Technique Search Results for "contrast" (9 found)
 
-**G183** (general): Using a contrast ratio of 3:1 with surrounding text and providing additional visual cues on hover for links or controls where color alone is used to identify them
+**G183** (general): Using a contrast ratio of at least 3:1 to distinguish inline text links from surrounding text
 **G18** (general): Ensuring that a contrast ratio of at least 4.5:1 exists between text (and images of text) and background behind the text
 **G174** (general): Providing a control with a sufficient contrast ratio that allows users to switch to a presentation that uses sufficient contrast
 **G145** (general): Ensuring that a contrast ratio of at least 3:1 exists between text (and images of text) and background behind the text

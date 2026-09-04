@@ -2,11 +2,58 @@
 
 **Technology:** html
 **Types:** sufficient
-**Applies to:** 1 success criteria
+**Applies to:** 1 success criterion
+**Applicability:** This technique applies to images used within HTML documents.
 
 ## Related Success Criteria
 
 - **1.1.1** Non-text Content (Level A)
+
+## Description
+
+When using the img element, specify a short text alternative with the alt attribute. Note. The value of this attribute is referred to as "alt text".
+
+When an image contains words that are important to understanding the content, the alt text should include those words. This will allow the alt text to play the same function on the page as the image. Note that it does not necessarily describe the visual characteristics of the image itself but must convey the same meaning as the image.
+
+## Examples
+
+### Example 1
+
+An image on a Website provides a link to a free newsletter. The image contains the text "Free newsletter. Get free recipes, news, and more. Learn more." The alt text matches the text in the image.
+
+```html
+<img src="newsletter.gif" alt="Free newsletter. 
+ Get free recipes, news, and more. Learn more.">
+```
+
+### Example 2
+
+An image on a website depicts the floor plan of a building. The image is an image map with each room an interactive map area. The alt text is "The building's floor plan. Select a room for more information about the purpose or content of the room." The instruction to "select a room" indicates that the image is interactive.
+
+## Tests
+
+### Procedure
+
+1. Examine each img element in the content.
+2. Check that each img element which conveys meaning contains an alt attribute.
+3. If the image contains words that are important to understanding the content, the words are included in the text alternative.
+
+### Expected Results
+
+Checks #2 and #3 are true.
+
+## Related Techniques
+
+- **G82**: Providing a text alternative that identifies the purpose of interactive non-text content
+- **H2**: Combining adjacent image and text links for the same resource
+- **H24**: Providing text alternatives for the area elements of image maps
+- **H30**: Providing link text that describes the purpose of a link for anchor elements
+
+## Resources
+
+- [HTML - img element](https://html.spec.whatwg.org/multipage/embedded-content.html#the-img-element)
+- [HTML - alt attribute](https://html.spec.whatwg.org/multipage/embedded-content.html#attr-img-alt)
+- [HTML - Requirements for providing text to act as an alternative for images](https://html.spec.whatwg.org/multipage/images.html#alt)
 
 ## Links
 

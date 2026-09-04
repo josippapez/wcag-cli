@@ -17,17 +17,18 @@ Command-line lookup for WCAG 2.2 success criteria, techniques and glossary, serv
 - **Refresh interval:** 7 days
 - **Force a refresh:** `wcag <command> --refresh`
 - **Stay offline:** set `WCAG_CLI_NO_NETWORK=1`
+- **Another version:** `wcag --wcag 2.1 <command>` or `WCAG_CLI_VERSION=2.1`
 
 ## Statistics
 
 - **Principles:** 4
 - **Guidelines:** 13
 - **Success Criteria:** 87 (Level A: 31, AA: 24, AAA: 31, Removed in WCAG 2.2: 1)
-- **Techniques:** 422
+- **Techniques:** 432
 - **Glossary Terms:** 101
 
 ## Attribution
 
 WCAG data from the [W3C WCAG Repository](https://github.com/w3c/wcag) ([W3C Document License](https://www.w3.org/copyright/document-license/)).
 
-This software includes material copied from or derived from Web Content Accessibility Guidelines (WCAG) 2.2. Copyright © 2023 W3C® (MIT, ERCIM, Keio, Beihang).
+This software includes material copied from or derived from Web Content Accessibility Guidelines (WCAG) 2.2. Copyright © World Wide Web Consortium. W3C® liability, trademark and document use rules apply.
