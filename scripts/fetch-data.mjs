@@ -44,13 +44,16 @@ const WCAG_JSON_URL = urls.wcagJson;
 // repository on GitHub Pages (https://w3c.github.io/wcag/), served by GitHub
 // with no such gate; parsed, H37, 1.1.1 and the 432-entry techniques index
 // came out byte-identical to w3.org's on that date. That mirror is the
-// default for the bulk pages. wcag.json, the Recommendation and the errata
-// have no mirror (the GitHub copy of the guidelines is the editors' draft and
-// its input-purpose list already differs), so those three requests always go
+// default for the bulk pages, fetched 8 at a time with no gap (measured
+// 2026-09-05: 8 workers cleared 48 pages in 0.81s on a cold edge, all 200
+// and parseable; 16 workers were no faster, so 8 is the pool size, not a
+// round number). wcag.json, the Recommendation and the errata have no
+// mirror (the GitHub copy of the guidelines is the editors' draft and its
+// input-purpose list already differs), so those three requests always go
 // to w3.org.
 //
-//   node scripts/fetch-data.mjs                     # pages from GitHub Pages
-//   node scripts/fetch-data.mjs --pages-from w3.org # pages from w3.org, paced
+//   node scripts/fetch-data.mjs                     # pages from GitHub Pages, 8 at a time
+//   node scripts/fetch-data.mjs --pages-from w3.org # pages from w3.org, one at a time, paced
 const pagesFrom = process.argv.includes('--pages-from')
   ? process.argv[process.argv.indexOf('--pages-from') + 1]
   : 'github';
@@ -59,15 +62,19 @@ const PAGES = {
     understanding: (id) => `https://w3c.github.io/wcag/understanding/${id}.html`,
     techniquesIndex: 'https://w3c.github.io/wcag/techniques/',
     technique: (technology, id) => `https://w3c.github.io/wcag/techniques/${technology}/${id}.html`,
-    gapMs: 100,
+    gapMs: 0,
+    concurrency: 8,
   },
   'w3.org': {
     understanding: urls.understanding,
     techniquesIndex: urls.techniquesIndex,
     technique: urls.technique,
-    // Pause between page requests: back-to-back requests are what drew the
-    // Cloudflare challenge.
+    // One at a time, paced 750ms apart: four in flight once drew a 429
+    // after 92 pages, and back-to-back requests are what drew the
+    // Cloudflare challenge that blocked the machine for the better part of
+    // an hour on 2026-09-04.
     gapMs: 750,
+    concurrency: 1,
   },
 }[pagesFrom];
 if (!PAGES) {
@@ -75,9 +82,6 @@ if (!PAGES) {
   process.exit(2);
 }
 
-// Pages are fetched one at a time: four in flight drew the 429 after 92 pages,
-// and the whole run is a release-time task where a few minutes do not matter.
-const TECHNIQUE_CONCURRENCY = 1;
 const RETRY_DELAYS_MS = [10000, 30000, 60000, 120000, 300000];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -141,17 +145,26 @@ async function main() {
   if (criteria.length === 0) throw new Error('wcag.json parsed to zero success criteria');
   process.stderr.write(`  ${criteria.length} success criteria, ${wcag.terms?.length ?? 0} glossary terms\n`);
 
-  // Understanding pages are fetched serially on purpose: a burst is what drew
-  // the Cloudflare challenge on w3.org.
-  const understanding = {};
+  // Same pool as techniques, at PAGES.concurrency. Completions arrive out of
+  // order once more than one page is in flight, so the progress counter
+  // increments per completion rather than per criterion index — but
+  // mapPool's own result array stays in criteria order regardless of
+  // completion order, so building `understanding` from it afterwards keeps
+  // JSON.stringify's key order (and so the written bytes) stable across
+  // runs instead of following whichever request race won.
   const empty = [];
-  for (const criterion of criteria) {
+  let understandingDone = 0;
+  const understandingResults = await mapPool(criteria, PAGES.concurrency, async (criterion) => {
     const parsed = parseUnderstanding(await fetchPage(PAGES.understanding(criterion.id)));
     if (!parsed.intent) empty.push(`${criterion.num} (no intent parsed)`);
-    understanding[criterion.num] = parsed;
-    process.stderr.write(`\r  understanding ${Object.keys(understanding).length}/${criteria.length}`);
-  }
+    process.stderr.write(`\r  understanding ${++understandingDone}/${criteria.length}`);
+    return parsed;
+  });
   process.stderr.write('\n');
+  const understanding = {};
+  criteria.forEach((criterion, i) => {
+    understanding[criterion.num] = understandingResults[i];
+  });
 
   // Fail loudly rather than shipping a thinner dataset: a W3C template change
   // would otherwise degrade silently into criteria with no Intent text.
@@ -180,16 +193,19 @@ async function main() {
   process.stderr.write(`fetching ${PAGES.techniquesIndex} (pages from ${pagesFrom})\n`);
   const techniqueIndex = parseTechniqueIndex(await fetchPage(PAGES.techniquesIndex));
   if (techniqueIndex.length === 0) throw new Error('techniques index parsed to zero techniques');
-  const techniques = {};
   const thin = [];
   let done = 0;
-  await mapPool(techniqueIndex, TECHNIQUE_CONCURRENCY, async (t) => {
+  const techniqueResults = await mapPool(techniqueIndex, PAGES.concurrency, async (t) => {
     const parsed = parseTechnique(await fetchPage(PAGES.technique(t.technology, t.id)));
     if (parsed.description.length === 0 && parsed.examples.length === 0) thin.push(t.id);
-    techniques[t.id] = parsed;
     process.stderr.write(`\r  techniques ${++done}/${techniqueIndex.length}`);
+    return parsed;
   });
   process.stderr.write('\n');
+  const techniques = {};
+  techniqueIndex.forEach((t, i) => {
+    techniques[t.id] = techniqueResults[i];
+  });
   // Every technique page has a Description; a page that yields neither that
   // nor an example is the template having moved, not a thin technique.
   if (thin.length > 0) {

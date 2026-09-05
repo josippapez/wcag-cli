@@ -237,7 +237,7 @@ WCAG_CLI_NO_NETWORK=1 wcag get-criterion 1.4.3
 
 `WCAG_CLI_NO_NETWORK=1` wins over `--refresh` — set it in CI or in a test harness and the run is guaranteed offline and reproducible.
 
-To move the *bundled* baseline forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`. It takes `wcag.json`, the Recommendation and the errata from w3.org, and the ~520 Understanding and technique pages from the WCAG Working Group's own GitHub Pages deployment of the same repository (`w3c.github.io/wcag`), one at a time: w3.org's Cloudflare front answers a burst of page requests with challenges that then block the machine for a long while, and the GitHub copy of those generated pages parses identically. `--pages-from w3.org` fetches the pages from w3.org instead, paced:
+To move the *bundled* baseline forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`. It takes `wcag.json`, the Recommendation and the errata from w3.org, and the ~520 Understanding and technique pages from the WCAG Working Group's own GitHub Pages deployment of the same repository (`w3c.github.io/wcag`), 8 at a time with no gap: GitHub Pages has no rate gate like w3.org's, and the GitHub copy of those generated pages parses identically. `--pages-from w3.org` fetches the pages from w3.org instead, one at a time and paced: w3.org's Cloudflare front answers a burst of page requests with challenges that then block the machine for a long while.
 
 ```bash
 node scripts/fetch-data.mjs
