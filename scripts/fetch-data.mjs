@@ -37,26 +37,21 @@ const WCAG_JSON_URL = urls.wcagJson;
 
 // Where the ~520 Understanding and technique pages come from.
 //
-// w3.org sits behind Cloudflare, which on 2026-09-04 answered this script's
-// back-to-back page requests with 429 "Just a moment..." challenges that then
-// applied to every request from the machine for the better part of an hour.
-// The WCAG Working Group publishes the same generated pages from the same
-// repository on GitHub Pages (https://w3c.github.io/wcag/), served by GitHub
-// with no such gate; parsed, H37, 1.1.1 and the 432-entry techniques index
-// came out byte-identical to w3.org's on that date. That mirror is the
-// default for the bulk pages, fetched 8 at a time with no gap (measured
-// 2026-09-05: 8 workers cleared 48 pages in 0.81s on a cold edge, all 200
-// and parseable; 16 workers were no faster, so 8 is the pool size, not a
-// round number). wcag.json, the Recommendation and the errata have no
-// mirror (the GitHub copy of the guidelines is the editors' draft and its
-// input-purpose list already differs), so those three requests always go
-// to w3.org.
+// w3.org is the default because it is the published version. GitHub Pages
+// (https://w3c.github.io/wcag/) is faster and has no Cloudflare gate, but
+// the WCAG repository rebuilds it in editors' mode on every push to main,
+// so it carries edits w3.org has not published: on 2026-09-22 it differed
+// from w3.org on 35 Understanding and technique pages. Only use it to preview
+// upcoming changes, never to build data for a release. It is fetched 8 at a
+// time with no gap (measured 2026-09-05: 8 workers cleared 48 pages in 0.81s,
+// 16 were no faster). wcag.json, the Recommendation and the errata always
+// come from w3.org.
 //
-//   node scripts/fetch-data.mjs                     # pages from GitHub Pages, 8 at a time
-//   node scripts/fetch-data.mjs --pages-from w3.org # pages from w3.org, one at a time, paced
+//   node scripts/fetch-data.mjs                     # pages from w3.org, one at a time, paced
+//   node scripts/fetch-data.mjs --pages-from github # editors' draft from GitHub Pages, 8 at a time
 const pagesFrom = process.argv.includes('--pages-from')
   ? process.argv[process.argv.indexOf('--pages-from') + 1]
-  : 'github';
+  : 'w3.org';
 const PAGES = {
   github: {
     understanding: (id) => `https://w3c.github.io/wcag/understanding/${id}.html`,

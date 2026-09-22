@@ -237,11 +237,11 @@ WCAG_CLI_NO_NETWORK=1 wcag get-criterion 1.4.3
 
 `WCAG_CLI_NO_NETWORK=1` wins over `--refresh` — set it in CI or in a test harness and the run is guaranteed offline and reproducible.
 
-To move the *bundled* baseline forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`. It takes `wcag.json`, the Recommendation and the errata from w3.org, and the ~520 Understanding and technique pages from the WCAG Working Group's own GitHub Pages deployment of the same repository (`w3c.github.io/wcag`), 8 at a time with no gap: GitHub Pages has no rate gate like w3.org's, and the GitHub copy of those generated pages parses identically. `--pages-from w3.org` fetches the pages from w3.org instead, one at a time and paced: w3.org's Cloudflare front answers a burst of page requests with challenges that then block the machine for a long while.
+To move the *bundled* baseline forward (a maintainer task, followed by a republish), run the build script and commit the regenerated `data/`. It fetches everything from w3.org, the ~520 Understanding and technique pages one at a time and paced: w3.org's Cloudflare front answers a burst of page requests with challenges that then block the machine for a long while. `--pages-from github` takes the pages from `w3c.github.io/wcag` instead, 8 at a time. That copy is the editors' draft, rebuilt on every change to the WCAG repository, so it can hold text W3C has not published. Use it to preview upcoming changes, not to build a release.
 
 ```bash
 node scripts/fetch-data.mjs
-node scripts/fetch-data.mjs --pages-from w3.org
+node scripts/fetch-data.mjs --pages-from github
 ```
 
 To check a release against the ones before it, run the same command matrix over
