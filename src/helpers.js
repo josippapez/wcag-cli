@@ -28,6 +28,16 @@ import {
   parseTechnique,
   parseSpecExtras,
   parseErrata,
+  parseObsolete,
+  parseActTestcases,
+  parseActRuleStatuses,
+  applyActRuleStatuses,
+  parseActTree,
+  gitBlobSha,
+  ACT_TESTCASES_URL,
+  ACT_RULES_URL,
+  ACT_FILES_BASE,
+  ACT_TREE_URL,
 } from './w3c.js';
 
 const require = createRequire(import.meta.url);
@@ -45,6 +55,9 @@ let techniquesPromise;
 let techniqueIndexPromise;
 let specPromise;
 let errataPromise;
+let actRulesPromise;
+let actHashesPromise;
+const obsoleteCache = new Map();
 const understandingCache = new Map();
 const localUnderstandingCache = new Map();
 const techniqueBodyCache = new Map();
@@ -57,6 +70,9 @@ export function configureDataset(options = {}) {
   techniqueIndexPromise = undefined;
   specPromise = undefined;
   errataPromise = undefined;
+  actRulesPromise = undefined;
+  actHashesPromise = undefined;
+  obsoleteCache.clear();
   understandingCache.clear();
   localUnderstandingCache.clear();
   techniqueBodyCache.clear();
@@ -430,7 +446,117 @@ export function getTechniqueIndex() {
 
 export async function findTechnique(id) {
   const all = await getAllTechniques();
-  return all.find((t) => t.id.toLowerCase() === id.toLowerCase());
+  const found = all.find((t) => t.id.toLowerCase() === id.toLowerCase());
+  if (found) return found;
+  // Retired techniques are not part of the published set above, so they stay
+  // out of lists and counts, but a lookup by id still answers.
+  const retired = await getObsoleteTechnique(id);
+  return retired
+    ? { id: retired.id, technology: retired.technology, title: retired.title, obsolete: retired.obsolete, types: [], criteria: [] }
+    : undefined;
+}
+
+// A retired technique: `{ id, technology, title, obsolete, body }`, or null.
+// Its page refreshes like any technique page, so a changed notice shows up,
+// and so does a technique W3C retires after this package was built: the id's
+// prefix names its folder (H -> html, FLASH -> flash), and the page itself
+// says whether it is obsolete.
+export function getObsoleteTechnique(id) {
+  const key = id.toUpperCase();
+  if (!obsoleteCache.has(key)) {
+    obsoleteCache.set(
+      key,
+      (async () => {
+        if (!/^[A-Z]+\d+$/.test(key)) return null;
+        const bundledEntry = (bundledFloor('techniques-obsolete') ?? []).find((t) => t.id === key);
+        const technology = bundledEntry?.technology ?? (await technologyByPrefix()).get(key.replace(/\d+$/, ''));
+        if (!technology) return null;
+        return loadResource(`techniques-obsolete/${key}`, {
+          ...loaderOptions(),
+          url: urls().technique(technology, key),
+          parse: (html) => {
+            const marked = parseObsolete(html);
+            return marked && { id: key, technology, title: marked.title, obsolete: marked.message, body: parseTechnique(html) };
+          },
+          validate: (entry) => entry !== null,
+          bundled: () => (bundledEntry ? { ...bundledEntry, body: bundledFloor('techniques')?.[key] ?? null } : null),
+        });
+      })()
+    );
+  }
+  return obsoleteCache.get(key);
+}
+
+async function technologyByPrefix() {
+  const map = new Map();
+  for (const t of [...((await getTechniqueIndex()) ?? []), ...(bundledResource('techniques-obsolete') ?? [])]) {
+    map.set(t.id.replace(/\d+$/, ''), t.technology);
+  }
+  return map;
+}
+
+/** ACT rules keyed by rule id, each with its test cases (markup attached by
+ * withActMarkup). The list and the statuses refresh weekly from w3.org.
+ * Version independent: the rules map to WCAG 2.0 and 2.1 numbers, which later
+ * versions keep. */
+export function getActRules() {
+  actRulesPromise ??= (async () => {
+    const bundled = bundledResource('act') ?? {};
+    const [rules, statuses] = await Promise.all([
+      loadResource('act-rules', {
+        ...loaderOptions(),
+        url: ACT_TESTCASES_URL,
+        parse: (text) => parseActTestcases(JSON.parse(text)),
+        validate: (r) => Object.keys(r).length > 0,
+        bundled: () => bundled,
+      }),
+      loadResource('act-statuses', {
+        ...loaderOptions(),
+        url: ACT_RULES_URL,
+        parse: parseActRuleStatuses,
+        validate: (st) => Object.keys(st).length > 0,
+        bundled: () => Object.fromEntries(Object.values(bundled).map((r) => [r.id, r.status])),
+      }),
+    ]);
+    return applyActRuleStatuses(rules, statuses);
+  })();
+  return actRulesPromise;
+}
+
+/** The test cases with their markup. Bundled markup is used while its git
+ * hash still matches GitHub's; only an example that changed is downloaded. */
+export async function withActMarkup(ruleId, testcases) {
+  actHashesPromise ??= loadResource('act-hashes', {
+    ...loaderOptions(),
+    url: ACT_TREE_URL,
+    parse: parseActTree,
+    validate: (hashes) => Object.keys(hashes).length > 0,
+  });
+  const hashes = await actHashesPromise;
+  const local = new Map((bundledResource('act')?.[ruleId]?.testcases ?? []).map((tc) => [tc.id, tc.html]));
+  const out = [];
+  for (const tc of testcases) {
+    const bundledHtml = local.get(tc.id);
+    const sha = hashes?.[tc.path];
+    if (!sha || (bundledHtml !== undefined && gitBlobSha(bundledHtml) === sha)) {
+      out.push({ ...tc, html: bundledHtml ?? null });
+      continue;
+    }
+    const html = await loadResource(`act-files/${sha}`, {
+      ...loaderOptions(),
+      url: `${ACT_FILES_BASE}${tc.path}`,
+      parse: (text) => text,
+      validate: (text) => gitBlobSha(text) === sha,
+      bundled: () => bundledHtml ?? null,
+    });
+    out.push({ ...tc, html });
+  }
+  return out;
+}
+
+/** The W3C publishes this package's data snapshots have seen, newest first. */
+export function getChanges() {
+  return bundledFloor('changes') ?? [];
 }
 
 // The body of one technique page: `{ applicability, description, examples,
@@ -440,6 +566,8 @@ function loadTechniqueBody(id, options) {
   return (async () => {
     const technique = await findTechnique(id);
     if (!technique) return null;
+    // A retired page was already loaded whole, notice and body together.
+    if (technique.obsolete !== undefined) return (await getObsoleteTechnique(technique.id)).body;
     return loadResource(`techniques/${technique.id}`, {
       ...options,
       url: urls().technique(technique.technology, technique.id),

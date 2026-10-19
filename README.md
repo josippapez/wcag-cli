@@ -2,7 +2,7 @@
 
 A command-line interface for WCAG guidelines, techniques, and glossary — powered by official W3C data.
 
-**wcag-cli** answers WCAG questions from your terminal — nothing to run, nothing to sign up for, and no round-trip before you get an answer. It owns its data end to end: the WCAG 2.2 dataset, the parsed Understanding documentation, every technique page, the conformance section and the errata are built straight from official W3C sources and bundled with the package, with no runtime dependencies. Another WCAG version, including a future one, is a flag away: `--wcag 2.1` fetches that version's data from w3.org and caches it, with no new release of this package.
+**wcag-cli** answers WCAG questions from your terminal — nothing to run, nothing to sign up for, and no round-trip before you get an answer. It owns its data end to end: the WCAG 2.2 dataset, the parsed Understanding documentation, every technique page (retired ones included), the ACT rules' test cases, the conformance section and the errata are built straight from official W3C sources and bundled with the package, with no runtime dependencies. Another WCAG version, including a future one, is a flag away: `--wcag 2.1` fetches that version's data from w3.org and caches it, with no new release of this package.
 
 ## Installation
 
@@ -104,6 +104,11 @@ wcag --wcag 2.1 list-success-criteria --level AA
 - **`get-failures-for-criterion`** — Gets failure techniques (common mistakes) for a specific success criterion.
   - Example: `wcag get-failures-for-criterion 1.4.3`
 
+- **`get-techniques-for-element`** — Finds the techniques and failures about an HTML element or attribute, the success criteria they serve, and the techniques whose code examples use it.
+  - Example: `wcag get-techniques-for-element "<img>"`, `wcag get-techniques-for-element aria-describedby`
+
+Retired techniques (F70, the Flash and Silverlight pages, and others W3C no longer lists) still answer `get-technique`, with W3C's obsolete notice at the top. They are left out of `list-techniques` and the counts.
+
 ### Glossary Commands
 
 - **`get-glossary-term`** — Gets the definition of a WCAG glossary term.
@@ -117,12 +122,18 @@ wcag --wcag 2.1 list-success-criteria --level AA
 - **`get-test-rules-for-criterion`** — Lists the W3C-approved ACT test rules for a success criterion, with a link to each rule. Rules still awaiting approval are marked (proposed).
   - Example: `wcag get-test-rules-for-criterion 1.1.1`
 
+- **`get-test-cases`** — The ACT rules' HTML examples for a success criterion, or for one ACT rule by id: markup that passes, fails, or is out of the rule's scope. `--expected passed|failed|inapplicable` keeps one kind.
+  - Example: `wcag get-test-cases 1.1.1 --expected failed`, `wcag get-test-cases 23a2a8`
+
 - **`get-conformance-requirements`** — The five conformance requirements from section 5 of the Recommendation: conformance level, full pages, complete processes, accessibility-supported ways of using technologies, non-interference.
 
 - **`list-input-purposes`** — The input purposes for user interface components from section 7 of the Recommendation: the 53 tokens (`name`, `email`, `cc-number`, ...) that 1.3.5 Identify Input Purpose requires to be programmatically determinable. Optionally filtered by keyword.
   - Example: `wcag list-input-purposes tel`
 
 - **`list-errata`** — The published errata, newest first, grouped by the publication they amend, each with the pull request behind it.
+
+- **`list-changes`** — Which Understanding and technique pages W3C changed in each w3.org publish, and which sections changed. Recorded each time the bundled data is rebuilt, starting from the 2026-09-04 snapshot. `--since YYYY-MM-DD` leaves out older publishes.
+  - Example: `wcag list-changes --since 2026-10-01`
 
 ### Enhanced Commands
 
@@ -221,6 +232,9 @@ The CLI never depends on the network to answer a question, but it will quietly k
 - **The cache is byte-for-byte what w3.org served.** The response body is stored verbatim rather than re-serialised, so the cached file is exactly the file the origin sent.
 - **Understanding and technique pages refresh lazily, one page at a time.** The Intent/Benefits/Examples prose behind `get-criterion` and the body behind `get-technique` are cached and TTL-tracked *per page*, with their own timestamps independent of `wcag.json`'s. The first time you read a criterion or a technique, that one page is fetched and cached; after that it is reused until its own week is up. Only the page you asked for is ever fetched — bulk readers such as `search-wcag --understanding` and `search-techniques --description` stay entirely local, so no command ever pulls 87 or 432 pages at once.
 - **The techniques index, the conformance section and the errata refresh weekly too**, each as a single request, so a technique W3C publishes tomorrow appears in `list-techniques` without a new release of this package.
+- **Retired techniques refresh like any technique page**, and a technique W3C retires after this package was built is found too: its id names its folder, and the page says it is obsolete.
+- **The ACT test cases refresh weekly when you use them.** The rule list and each rule's status come from w3.org. GitHub supplies the git hash of every example file in one request, and only an example whose hash no longer matches the bundled copy is downloaded.
+- **The change record is the one bundle-only dataset.** It is a diff between two rebuilds of this package, so it moves with a release.
 - **Every request identifies itself** with a `wcag-cli/<version>` User-Agent.
 - **Never hard-fails.** A refresh that cannot complete — offline, DNS failure, a `5xx`, a rate limit, an empty or malformed response — prints a note to stderr and answers from the cache or the bundled floor. A network problem never turns a lookup into an error. The one exception is the first run for a version that is not bundled (`--wcag 2.1` with no cache and no network), which has nothing to answer from and says so.
 

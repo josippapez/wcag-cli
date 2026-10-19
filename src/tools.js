@@ -45,6 +45,9 @@ import {
   getTechniqueBodyLocal,
   getSpecExtras,
   getErrata,
+  getActRules,
+  withActMarkup,
+  getChanges,
   techniqueNames,
   findTerm,
   searchTerms,
@@ -776,6 +779,7 @@ const getTechnique = {
     const url = urls().technique(technique.technology, technique.id);
 
     let output = `# ${technique.id}: ${technique.title}\n\n`;
+    if (technique.obsolete !== undefined) output += `> **Obsolete:** ${technique.obsolete}\n\n`;
     output += `**Technology:** ${technique.technology}\n`;
     output += `**Types:** ${technique.types.length ? technique.types.join(', ') : 'none (not referenced by any success criterion)'}\n`;
     output += `**Applies to:** ${
@@ -850,6 +854,7 @@ const getTechnique = {
       ...techniqueSummary(technique),
       criteria: criteria.map(criterionSummary),
       url,
+      obsolete: technique.obsolete ?? null,
       brief,
       applicability: body?.applicability ?? '',
       description: body?.description ?? [],
@@ -1202,6 +1207,8 @@ const whatsNew = {
 const whatsNewInWcag22 = {
   name: 'whats-new-in-wcag22',
   description: 'Alias for "whats-new": lists what WCAG 2.2 added and removed.',
+  // The name promises 2.2, so --wcag does not move it.
+  version: '2.2',
   inputSchema: { type: 'object', properties: {}, required: [] },
   handler: renderWhatsNew,
 };
@@ -1430,7 +1437,8 @@ const listErrata = {
         kind = e.kind;
         output += `### ${kind}\n\n`;
       }
-      const changes = e.changes.map((c) => `[#${c.split('/').pop()}](${c})`).join(', ');
+      const label = (c) => (c.includes('/commit/') ? c.split('/').pop() : `#${c.split('/').pop()}`);
+      const changes = e.changes.map((c) => `[${label(c)}](${c})`).join(', ');
       output += `- **${e.date}** ${e.text}${changes ? ` (${changes})` : ''}\n`;
     }
     output += `\n[Errata page](${url})\n`;
@@ -1511,7 +1519,9 @@ const getServerInfo = {
     return textResponse(output, {
       cli: packageVersion(),
       version: getVersion(),
-      dataset: meta ?? null,
+      // The bundled meta also counts techniques and a refreshed one does
+      // not; statistics.techniques is the count, so keep one shape here.
+      dataset: meta ? (({ techniques, ...rest }) => rest)(meta) : null,
       cache: { directory: cacheDir, ttlDays },
       statistics: {
         principles: principles.length,
@@ -1521,6 +1531,231 @@ const getServerInfo = {
         glossaryTerms: terms.length,
       },
     });
+  },
+};
+
+// ============================================================================
+// ACT TEST CASES, ELEMENT LOOKUP, CHANGES
+// ============================================================================
+
+const getTestCases = {
+  name: 'get-test-cases',
+  description:
+    'Shows the W3C ACT test cases for a success criterion or one ACT rule: HTML examples that pass, fail, or are out of scope for each rule. Pass --expected to keep one kind.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      ref: { type: 'string', description: 'A success criterion (e.g. "1.1.1") or an ACT rule id (e.g. "23a2a8")' },
+      expected: {
+        type: 'string',
+        description: 'Only the examples with this outcome',
+        enum: ['passed', 'failed', 'inapplicable'],
+      },
+    },
+    required: ['ref'],
+  },
+  handler: async (args) => {
+    const rules = await getActRules();
+    let selected;
+    let criterion = null;
+    if (Object.hasOwn(rules, args.ref)) {
+      selected = [rules[args.ref]];
+    } else {
+      const result = await findSuccessCriterion(args.ref);
+      if (!result) {
+        return notFoundCriterion(args.ref, ' Pass a criterion number like "1.1.1" or an ACT rule id like "23a2a8".');
+      }
+      criterion = result.sc;
+      // Rules that test the criterion for conformance first, then the ones
+      // that only relate to it; approved before proposed within each.
+      const rank = (r) =>
+        (r.criteria.find((c) => c.num === criterion.num).secondary ? 6 : 0) + ['approved', 'proposed'].indexOf(r.status) + 1;
+      selected = Object.values(rules)
+        .filter((r) => r.criteria.some((c) => c.num === criterion.num))
+        .sort((a, b) => rank(a) - rank(b));
+    }
+
+    const keep = (tc) => !args.expected || tc.expected === args.expected;
+    const data = {
+      version: getVersion(),
+      criterion: criterion && criterionSummary(criterion),
+      expected: args.expected ?? null,
+      rules: [],
+    };
+    for (const r of selected) {
+      data.rules.push({
+        id: r.id,
+        name: r.name,
+        url: r.url,
+        status: r.status,
+        secondary: criterion ? r.criteria.find((c) => c.num === criterion.num).secondary : false,
+        testcases: (await withActMarkup(r.id, r.testcases.filter(keep))).map(({ path, ...tc }) => tc),
+      });
+    }
+
+    const subject = criterion ? `${criterion.num} ${criterion.handle}` : `${selected[0].name} (${selected[0].id})`;
+    if (selected.length === 0) {
+      return textResponse(
+        `No ACT rules test ${subject}. It is checked with the techniques and failures instead.`,
+        data
+      );
+    }
+
+    let output = `# ACT Test Cases for ${subject}\n\n`;
+    output += 'Examples from the W3C ACT rules: markup that passes each rule, fails it, or is out of its scope.\n\n';
+    for (const rule of data.rules) {
+      if (criterion) output += `## ${rule.name} (${rule.id})\n\n`;
+      output += `[Rule](${rule.url}), ${rule.status}${rule.secondary ? ', related to this criterion but not required for it' : ''}\n\n`;
+      for (const tc of rule.testcases) {
+        output += tc.html === null
+          ? `### ${tc.title}\n\nMarkup not available offline; see the rule page.\n\n`
+          : `### ${tc.title}\n\n\`\`\`html\n${tc.html.replace(/\s+$/, '')}\n\`\`\`\n\n`;
+      }
+    }
+    return textResponse(output, data);
+  },
+};
+
+// Element and attribute names as people type them: "img", "<img>", "</td>".
+const ELEMENT_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const escapeRe = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getTechniquesForElement = {
+  name: 'get-techniques-for-element',
+  description:
+    'Finds the techniques and failures for an HTML element or attribute (e.g. "img", "<input>", "alt", "aria-describedby") and the success criteria they serve, from technique titles and code examples.',
+  inputSchema: {
+    type: 'object',
+    properties: { name: { type: 'string', description: 'Element or attribute name, e.g. "img" or "aria-label"' } },
+    required: ['name'],
+  },
+  handler: async (args) => {
+    const name = args.name.toLowerCase().replace(/[<>/]/g, '').trim();
+    if (!ELEMENT_NAME_RE.test(name)) {
+      return textResponse(`"${args.name}" is not an element or attribute name. Try "img", "<input>" or "aria-label".`, {
+        version: getVersion(),
+        error: 'invalid_name',
+        name: args.name,
+      });
+    }
+    const word = new RegExp(`(^|[^a-z0-9-])${escapeRe(name)}([^a-z0-9-]|$)`, 'i');
+    // Short names ("a", "th", "img") are also ordinary words or fragments, so
+    // in a title they only count next to "element" or "attribute".
+    // Technique titles call <a> an "anchor element".
+    const titleName = name === 'a' ? 'anchor' : name;
+    const named = new RegExp(`(^|[^a-z0-9-])${escapeRe(titleName)}\\s+(elements?|attributes?)\\b`, 'i');
+    const inCode = new RegExp(`<${escapeRe(name)}[\\s>/]|\\s${escapeRe(name)}\\s*=`, 'i');
+
+    const about = [];
+    const usedIn = [];
+    for (const t of await getAllTechniques()) {
+      if (name.length >= 4 ? word.test(t.title) : named.test(t.title)) {
+        about.push(t);
+        continue;
+      }
+      const body = await getTechniqueBodyLocal(t.id);
+      const code = [...(body?.description ?? []), ...(body?.examples ?? []).flatMap((e) => e.blocks)]
+        .filter((b) => typeof b !== 'string')
+        .map((b) => b.code);
+      if (code.some((c) => inCode.test(c))) usedIn.push(t);
+    }
+
+    const criteria = [];
+    for (const num of [...new Set(about.flatMap((t) => t.criteria))].sort((a, b) =>
+      a.localeCompare(b, 'en', { numeric: true })
+    )) {
+      const result = await findSuccessCriterion(num);
+      if (result) criteria.push(result.sc);
+    }
+    const summary = (t) => ({ id: t.id, technology: t.technology, title: t.title, types: t.types, criteria: t.criteria });
+    const data = {
+      version: getVersion(),
+      name,
+      about: about.map(summary),
+      usedInExamples: usedIn.map(summary),
+      criteria: criteria.map(criterionSummary),
+    };
+
+    if (about.length === 0 && usedIn.length === 0) {
+      return textResponse(`No techniques mention "${name}". Try search-techniques for a broader match.`, data);
+    }
+
+    const line = (t) => `- **${t.id}** (${t.types.join(', ') || 'not referenced'}): ${t.title}\n`;
+    let output = `# Techniques for ${name}\n\n`;
+    if (about.length) {
+      output += `## About ${name} (${about.length})\n\n`;
+      for (const t of about) output += line(t);
+      output += '\n';
+    }
+    if (criteria.length) {
+      output += `## Success criteria these serve (${criteria.length})\n\n`;
+      for (const sc of criteria) output += `- **${sc.num}** ${sc.handle} (${levelTag(sc)})\n`;
+      output += '\n';
+    }
+    if (usedIn.length) {
+      output += `## Examples that use ${name} (${usedIn.length})\n\n`;
+      for (const t of usedIn) output += line(t);
+      output += '\n';
+    }
+    return textResponse(output, data);
+  },
+};
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const listChanges = {
+  name: 'list-changes',
+  description:
+    'Lists the w3.org publishes that changed Understanding or technique pages, newest first, with which sections changed. Recorded each time this package rebuilds its data, starting from the 2026-09-04 snapshot. Pass --since YYYY-MM-DD to leave out older publishes.',
+  inputSchema: {
+    type: 'object',
+    properties: { since: { type: 'string', description: 'Only publishes on or after this date (YYYY-MM-DD)' } },
+    required: [],
+  },
+  handler: async (args) => {
+    if (args.since !== undefined && !DATE_RE.test(args.since)) {
+      throw new Error(`invalid since ${JSON.stringify(args.since)}: expected a date like 2026-10-01`);
+    }
+    const changes = getChanges().filter((c) => !args.since || (c.published ?? '') >= args.since);
+    const all = await getAllTechniques();
+    const titles = new Map(all.map((t) => [t.id, t.title]));
+    const entries = [];
+    for (const change of changes) {
+      const understanding = [];
+      for (const u of change.understanding) {
+        const result = await findSuccessCriterion(u.num);
+        understanding.push({ ...u, handle: result?.sc.handle ?? null });
+      }
+      const techniques = change.techniques.map((t) => ({ ...t, title: titles.get(t.id) ?? null }));
+      entries.push({ published: change.published, understanding, techniques });
+    }
+    const data = { version: getVersion(), since: args.since ?? null, changes: entries };
+
+    if (entries.length === 0) {
+      return textResponse(
+        args.since
+          ? `No recorded changes since ${args.since}.`
+          : `No changes are recorded for ${wcag()}; only WCAG 2.2 data is tracked.`,
+        data
+      );
+    }
+
+    let output = `# Changes to the W3C guidance (${pluralise(entries.length, 'publish', 'publishes')})\n\n`;
+    output += 'Understanding and technique pages that changed on w3.org, recorded when this package rebuilt its data. The record starts from the 2026-09-04 snapshot.\n\n';
+    for (const e of entries) {
+      output += `## Published ${e.published ?? '(date unknown)'}\n\n`;
+      if (e.understanding.length) {
+        output += `### Understanding (${e.understanding.length})\n\n`;
+        for (const u of e.understanding) output += `- **${u.num}** ${u.handle ?? ''}: ${u.sections.join(', ')}\n`;
+        output += '\n';
+      }
+      if (e.techniques.length) {
+        output += `### Techniques (${e.techniques.length})\n\n`;
+        for (const t of e.techniques) output += `- **${t.id}** ${t.title ?? ''}: ${t.sections.join(', ')}\n`;
+        output += '\n';
+      }
+    }
+    return textResponse(output, data);
   },
 };
 
@@ -1556,7 +1791,10 @@ export const tools = [
   whatsNew,
   whatsNewInWcag22,
   getTestRulesForCriterion,
+  getTestCases,
   getFullCriterionContext,
+  getTechniquesForElement,
+  listChanges,
 
   // The Recommendation beyond wcag.json
   getConformanceRequirements,

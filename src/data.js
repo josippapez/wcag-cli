@@ -460,7 +460,11 @@ export async function loadResource(
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
-        note(`wcag-cli: ${name} refresh failed (HTTP ${res.status}); using local data`);
+        // With nothing local either, the status is the answer (an id that
+        // does not exist), not a failed refresh.
+        if (cachedData !== null || bundled() !== null) {
+          note(`wcag-cli: ${name} refresh failed (HTTP ${res.status}); using local data`);
+        }
       } else {
         const data = parse(await res.text());
         if (!validate(data)) {

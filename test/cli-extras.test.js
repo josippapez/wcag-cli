@@ -220,3 +220,60 @@ test('related success criteria are listed in numeric order', () => {
 test('an empty WCAG_CLI_VERSION falls back to the default version', () => {
   assert.match(run(['list-principles'], { ...ENV, WCAG_CLI_VERSION: '' }), /WCAG 2\.2/);
 });
+
+test('whats-new-in-wcag22 answers for 2.2 whatever --wcag says', () => {
+  assert.equal(run(['--wcag', '2.1', 'whats-new-in-wcag22']), run(['whats-new-in-wcag22']));
+});
+
+test('get-server-info --json keeps one dataset shape: the technique count lives in statistics', () => {
+  const out = JSON.parse(run(['get-server-info', '--json']));
+  assert.equal('techniques' in out.dataset, false);
+  assert.equal(out.statistics.techniques, 432);
+});
+
+// --- obsolete techniques, ACT test cases, element lookup, changes -------------
+
+test('get-technique serves a retired technique with its obsolete notice, outside the published list', () => {
+  const text = run(['get-technique', 'F70']);
+  assert.match(text, /^# F70: Failure of Success Criterion 4\.1\.1/);
+  assert.match(text, /> \*\*Obsolete:\*\* This failure relates to 4\.1\.1 Parsing/);
+  assert.match(JSON.parse(run(['get-technique', 'f70', '--json'])).obsolete, /4\.1\.1 Parsing/);
+  assert.equal(JSON.parse(run(['list-techniques', '--json'])).techniques.length, 432);
+});
+
+test('get-test-cases shows the ACT examples for a criterion, filtered by outcome', () => {
+  const { rules } = JSON.parse(run(['get-test-cases', '1.1.1', '--expected', 'failed', '--json']));
+  assert.ok(rules.some((r) => r.id === '23a2a8'));
+  const cases = rules.flatMap((r) => r.testcases);
+  assert.ok(cases.length > 0);
+  assert.ok(cases.every((tc) => tc.expected === 'failed' && tc.html.includes('<')));
+  assert.match(run(['get-test-cases', '1.1.1']), /### Failed Example 1\n\n```html\n<!DOCTYPE html>/i);
+});
+
+test('get-test-cases takes an ACT rule id too', () => {
+  const text = run(['get-test-cases', '23a2a8']);
+  assert.match(text, /^# ACT Test Cases for Image has non-empty accessible name \(23a2a8\)/);
+});
+
+test('get-techniques-for-element finds the techniques about an element and the criteria they serve', () => {
+  const out = JSON.parse(run(['get-techniques-for-element', '<img>', '--json']));
+  assert.deepEqual(out.about.map((t) => t.id).sort(), ['F65', 'H37', 'H67']);
+  assert.deepEqual(out.criteria.map((c) => c.num), ['1.1.1']);
+  assert.ok(out.usedInExamples.length > 0);
+  assert.ok(JSON.parse(run(['get-techniques-for-element', 'a', '--json'])).about.some((t) => t.id === 'H30'));
+});
+
+test('list-changes lists the recorded w3.org publishes and filters by date', () => {
+  const { changes } = JSON.parse(run(['list-changes', '--json']));
+  const oct = changes.find((c) => c.published === '2026-10-01');
+  assert.ok(oct.understanding.some((u) => u.num === '1.3.5' && u.sections.includes('intent')));
+  assert.ok(oct.techniques.some((t) => t.id === 'F86'));
+  assert.equal(JSON.parse(run(['list-changes', '--since', '2099-01-01', '--json'])).changes.length, 0);
+  assert.equal(runFail(['list-changes', '--since', 'yesterday']).code, 1);
+});
+
+test('get-test-cases reports an approved rule as approved, with the page the Understanding docs cite', () => {
+  const { rules } = JSON.parse(run(['get-test-cases', '59796f', '--json']));
+  assert.equal(rules[0].status, 'approved');
+  assert.equal(rules[0].url, 'https://www.w3.org/WAI/standards-guidelines/act/rules/59796f/');
+});

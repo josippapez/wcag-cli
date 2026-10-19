@@ -5,6 +5,7 @@
 // .orchestration/own-wcag-data/issues/01-w3c-source-and-data-build.md for
 // the accepted decision against pulling in an HTML-parsing dependency.
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 
 // Every W3C URL is derived from the version, so a future WCAG 2.x is a flag
 // (`--wcag 2.3`), not a release of this package. W3C's layout has been stable
@@ -445,6 +446,110 @@ export function parseTechnique(html) {
   return { applicability, description, examples, tests, related, resources };
 }
 
+// W3C keeps pages for the techniques it has retired (Flash, Silverlight, the
+// 4.1.1 failures, ...) and marks them with `<body class="obsolete">` and an
+// "Obsolete" box; the index no longer lists them. Returns `{ title, message }`
+// for such a page, or null for any other page.
+export function parseObsolete(html) {
+  if (!/<body\b[^>]*class=["'][^"']*\bobsolete\b/i.test(html)) return null;
+  const title = stringify(/<title>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '')
+    .replace(/^\[Obsolete\]\s*/i, '')
+    .replace(/^[A-Z]+\d+:\s*/, '')
+    .replace(/\s*\|\s*WAI\s*\|\s*W3C$/, '');
+  const box = /<section\b[^>]*class=["'][^"']*\bobsolete-message\b[^"']*["'][^>]*>([\s\S]*?)<\/section>/i.exec(html);
+  const message = box ? stringify(box[1].replace(/<h2\b[\s\S]*?<\/h2>/i, '')) : '';
+  return { title, message };
+}
+
+// ============================================================================
+// ACT TEST CASES
+// ============================================================================
+
+// W3C's testcases.json lists every example of every ACT rule it publishes,
+// with the rule's accessibility requirements keyed like `wcag20:1.1.1` or
+// `wcag-technique:H37`. Group it by rule; the example markup itself is fetched
+// separately and joined in by the caller under `html`.
+export function parseActTestcases(json) {
+  const rules = {};
+  for (const tc of json.testcases ?? []) {
+    rules[tc.ruleId] ??= {
+      id: tc.ruleId,
+      name: tc.ruleName,
+      url: tc.rulePage,
+      // Set from the rules list by applyActRuleStatuses: `approved` here is
+      // per test case, and differs between the cases of one rule.
+      status: null,
+      criteria: [],
+      techniques: [],
+      testcases: [],
+    };
+    const rule = rules[tc.ruleId];
+    if (rule.testcases.length === 0) {
+      for (const [key, req] of Object.entries(tc.ruleAccessibilityRequirements ?? {})) {
+        const [scheme, ref] = key.split(':');
+        // `secondary` marks a criterion the rule is related to but does not
+        // test for conformance; keep the difference.
+        if (/^wcag2\d$/.test(scheme)) rule.criteria.push({ num: ref, secondary: !req?.forConformance });
+        else if (scheme === 'wcag-technique') rule.techniques.push(ref);
+      }
+    }
+    rule.testcases.push({
+      id: tc.testcaseId,
+      title: tc.testcaseTitle,
+      expected: tc.expected,
+      path: tc.relativePath,
+    });
+  }
+  return rules;
+}
+
+// The ACT rules list marks each rule `<li class="act-rule ..." data-status=
+// "approved|proposed|deprecated">`. Returns `{ ruleId: status }`.
+export function parseActRuleStatuses(listHtml) {
+  const statuses = {};
+  const liRe = /<li\b[^>]*class=["']act-rule\b[^"']*["'][^>]*data-status=["'](\w+)["'][^>]*>\s*<a href=["'][^"']*\/rules\/([a-z0-9]+)\//g;
+  let m;
+  while ((m = liRe.exec(listHtml))) statuses[m[2]] ??= m[1];
+  return statuses;
+}
+
+// The list links even approved rules to their newer /proposed/ draft, so an
+// approved rule is pointed at its approved page, the one Understanding cites.
+export function applyActRuleStatuses(rules, statuses) {
+  for (const rule of Object.values(rules)) {
+    if (!Object.hasOwn(statuses, rule.id)) continue;
+    rule.status = statuses[rule.id];
+    if (rule.status === 'approved') rule.url = `https://www.w3.org/WAI/standards-guidelines/act/rules/${rule.id}/`;
+  }
+  return rules;
+}
+
+// W3C publishes the ACT rules from the w3c/wcag-act-rules repository, and the
+// example files on GitHub are byte-identical to the w3.org copies (checked
+// 2026-10-19). The list and the statuses come from w3.org; the example files
+// come from GitHub, which also gives every file's git hash in one request, so
+// a refresh only downloads the examples that changed.
+export const ACT_TESTCASES_URL = 'https://www.w3.org/WAI/content-assets/wcag-act-rules/testcases.json';
+export const ACT_RULES_URL = 'https://www.w3.org/WAI/standards-guidelines/act/rules/';
+export const ACT_FILES_BASE = 'https://raw.githubusercontent.com/w3c/wcag-act-rules/main/content-assets/wcag-act-rules/';
+export const ACT_TREE_URL =
+  'https://api.github.com/repos/w3c/wcag-act-rules/git/trees/main:content-assets/wcag-act-rules/testcases?recursive=1';
+
+/** `{ "testcases/<rule>/<file>": gitBlobSha }` from the GitHub tree listing. */
+export function parseActTree(text) {
+  const hashes = {};
+  for (const entry of JSON.parse(text).tree ?? []) {
+    if (entry.type === 'blob') hashes[`testcases/${entry.path}`] = entry.sha;
+  }
+  return hashes;
+}
+
+/** The hash git gives a file with this content. */
+export function gitBlobSha(text) {
+  const bytes = Buffer.from(text, 'utf8');
+  return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+}
+
 // ============================================================================
 // THE RECOMMENDATION (TR): what wcag.json leaves out
 // ============================================================================
@@ -518,7 +623,8 @@ export function parseErrata(html) {
     const aRe = /<a\s+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     let a;
     while ((a = aRe.exec(item))) {
-      if (/^#\d+$/.test(stringify(a[2]))) changes.push(decodeEntities(a[1]));
+      // A pull request (`#123`) or, on older pages, a commit (`61900d5`).
+      if (/^(?:#\d+|[0-9a-f]{7,40})$/.test(stringify(a[2]))) changes.push(decodeEntities(a[1]));
     }
     const dated = /^(\d{4}-\d{2}-\d{2}):\s*(.*)$/.exec(stringify(item));
     if (!dated) continue;
@@ -526,7 +632,7 @@ export function parseErrata(html) {
       date: dated[1],
       kind,
       since,
-      text: dated[2].replace(/\s*\((?:#\d+(?:,\s*)?)+\)\s*$/, '').trim(),
+      text: dated[2].replace(/\s*\((?:(?:#\d+|[0-9a-f]{7,40})(?:,\s*)?)+\)\s*$/, '').trim(),
       changes,
     });
   }

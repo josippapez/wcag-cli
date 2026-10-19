@@ -16,7 +16,7 @@
 // The bundled copy is only a floor. At runtime the CLI refreshes from the same
 // URLs on a TTL, so this script exists for release-time snapshots and for
 // regenerating after an upstream errata, not on a schedule.
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,13 @@ import {
   parseTechnique,
   parseSpecExtras,
   parseErrata,
+  parseObsolete,
+  parseActTestcases,
+  applyActRuleStatuses,
+  parseActRuleStatuses,
+  ACT_TESTCASES_URL,
+  ACT_RULES_URL,
+  ACT_FILES_BASE,
 } from '../src/w3c.js';
 
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -104,7 +111,62 @@ async function fetchText(url, gapMs = 0) {
   return text;
 }
 
-const fetchPage = (url) => fetchText(url, PAGES.gapMs);
+// The newest Last-Modified among the pages that changed is the w3.org publish
+// date recorded in data/changes.json.
+const lastModified = new Map();
+async function fetchPage(url) {
+  const res = await fetchOk(url);
+  const text = await res.text();
+  lastModified.set(url, res.headers.get('last-modified'));
+  if (PAGES.gapMs) await sleep(PAGES.gapMs);
+  return text;
+}
+
+
+// The techniques index leaves out the ones W3C retired. The WCAG repository
+// is the only list of them, so it names the candidates and w3.org serves each
+// page; a page not marked obsolete there (not yet published) is skipped.
+const REPO_TECHNIQUES_API = 'https://api.github.com/repos/w3c/wcag/contents/techniques';
+
+async function fetchJson(url) {
+  return JSON.parse(await fetchText(url));
+}
+
+async function listRepoTechniques() {
+  const dirs = (await fetchJson(REPO_TECHNIQUES_API)).filter((e) => e.type === 'dir');
+  const out = [];
+  for (const dir of dirs) {
+    for (const file of await fetchJson(`${REPO_TECHNIQUES_API}/${dir.name}`)) {
+      const m = /^([A-Z]+\d+)\.html$/.exec(file.name);
+      if (m) out.push({ id: m[1], technology: dir.name });
+    }
+  }
+  return out;
+}
+
+// Which top-level sections of each entry differ from the previous bundle.
+function changedSections(before, after) {
+  const out = [];
+  for (const [key, value] of Object.entries(after)) {
+    if (!before || !(key in before)) {
+      out.push({ key, sections: ['new'] });
+      continue;
+    }
+    const sections = Object.keys(value).filter(
+      (section) => JSON.stringify(value[section]) !== JSON.stringify(before[key][section])
+    );
+    if (sections.length) out.push({ key, sections });
+  }
+  return out;
+}
+
+async function readPrevious(name, fallback) {
+  try {
+    return JSON.parse(await readFile(join(dataDir, name), 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
 
 async function mapPool(items, limit, fn) {
   const results = new Array(items.length);
@@ -207,6 +269,43 @@ async function main() {
     throw new Error(`Technique parse yielded nothing for ${thin.length} pages: ${thin.join(', ')}`);
   }
 
+  process.stderr.write('listing retired techniques in the WCAG repository\n');
+  const published = new Set(techniqueIndex.map((t) => t.id));
+  const candidates = (await listRepoTechniques()).filter((t) => !published.has(t.id));
+  const obsolete = [];
+  let checked = 0;
+  for (const t of candidates) {
+    const url = PAGES.technique(t.technology, t.id);
+    let html;
+    try {
+      html = await fetchPage(url);
+    } catch (err) {
+      if (!/responded 404$/.test(err.message)) throw err;
+    }
+    process.stderr.write(`\r  obsolete ${++checked}/${candidates.length}`);
+    const marked = html && parseObsolete(html);
+    if (!marked) continue;
+    obsolete.push({ id: t.id, technology: t.technology, title: marked.title, obsolete: marked.message });
+    techniques[t.id] = parseTechnique(html);
+  }
+  process.stderr.write(`\n  ${obsolete.length} obsolete techniques\n`);
+  if (obsolete.length === 0) throw new Error('found no obsolete technique pages; the obsolete marker has likely moved');
+
+  process.stderr.write(`fetching ${ACT_TESTCASES_URL}\n`);
+  const actRules = applyActRuleStatuses(
+    parseActTestcases(JSON.parse(await fetchText(ACT_TESTCASES_URL))),
+    parseActRuleStatuses(await fetchText(ACT_RULES_URL))
+  );
+  const unrated = Object.values(actRules).filter((r) => !r.status).map((r) => r.id);
+  if (unrated.length) throw new Error(`no status on the ACT rules list for ${unrated.join(', ')}`);
+  const actCases = Object.values(actRules).flatMap((rule) => rule.testcases);
+  let actDone = 0;
+  await mapPool(actCases, 8, async (tc) => {
+    tc.html = await fetchText(`${ACT_FILES_BASE}${tc.path}`);
+    process.stderr.write(`\r  ACT examples ${++actDone}/${actCases.length}`);
+  });
+  process.stderr.write(`\n  ${Object.keys(actRules).length} ACT rules\n`);
+
   process.stderr.write(`fetching ${urls.spec}\n`);
   const spec = parseSpecExtras(await fetchText(urls.spec));
   if (spec.conformanceRequirements.length === 0 || spec.inputPurposes.length === 0) {
@@ -223,6 +322,33 @@ async function main() {
   const errata = parseErrata(await fetchText(urls.errata));
   process.stderr.write(`  ${errata.length} errata\n`);
 
+  // A rebuild that changed nothing adds nothing; otherwise it records which
+  // pages moved, dated by w3.org's own Last-Modified for them.
+  const changes = await readPrevious('changes.json', []);
+  const understandingChanged = changedSections(await readPrevious('understanding.json', null), understanding);
+  // An obsolete page this package had not bundled before is new to us, not
+  // a W3C change; a technique W3C retires was already bundled from the index.
+  const obsoleteIds = new Set(obsolete.map((t) => t.id));
+  const techniquesChanged = changedSections(await readPrevious('techniques.json', null), techniques).filter(
+    ({ key, sections }) => !(sections[0] === 'new' && obsoleteIds.has(key))
+  );
+  if (understandingChanged.length || techniquesChanged.length) {
+    const changedUrls = [
+      ...understandingChanged.map(({ key }) => PAGES.understanding(criteria.find((c) => c.num === key).id)),
+      ...techniquesChanged.map(({ key }) => {
+        const t = techniqueIndex.find((x) => x.id === key) ?? obsolete.find((x) => x.id === key);
+        return PAGES.technique(t.technology, t.id);
+      }),
+    ];
+    const dates = changedUrls.map((u) => Date.parse(lastModified.get(u))).filter(Number.isFinite);
+    changes.unshift({
+      published: dates.length ? new Date(Math.max(...dates)).toISOString().slice(0, 10) : null,
+      fetchedAt: new Date().toISOString(),
+      understanding: understandingChanged.map(({ key, sections }) => ({ num: key, sections })),
+      techniques: techniquesChanged.map(({ key, sections }) => ({ id: key, sections })),
+    });
+  }
+
   await mkdir(dataDir, { recursive: true });
   await writeFile(join(dataDir, 'wcag.json'), body);
   await writeFile(join(dataDir, 'understanding.json'), JSON.stringify(understanding));
@@ -230,6 +356,9 @@ async function main() {
   await writeFile(join(dataDir, 'techniques.json'), JSON.stringify(techniques));
   await writeFile(join(dataDir, 'spec.json'), JSON.stringify(spec));
   await writeFile(join(dataDir, 'errata.json'), JSON.stringify(errata));
+  await writeFile(join(dataDir, 'techniques-obsolete.json'), JSON.stringify(obsolete));
+  await writeFile(join(dataDir, 'act.json'), JSON.stringify(actRules));
+  await writeFile(join(dataDir, 'changes.json'), JSON.stringify(changes));
   await writeFile(
     join(dataDir, 'meta.json'),
     JSON.stringify(

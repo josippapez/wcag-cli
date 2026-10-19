@@ -1,12 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   configureDataset,
   getErrata,
+  getActRules,
+  withActMarkup,
+  findTechnique,
+  getTechniqueBody,
   dataset,
   getPrinciples,
   getTerms,
@@ -539,4 +543,76 @@ test('getErrata does not cache a 200 page that parses to no errata', async () =>
     configureDataset();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- refresh of the ACT data and the retired techniques ------------------------
+
+import { gitBlobSha } from '../src/w3c.js';
+
+const withFakeNetwork = async (routes, fn) => {
+  const dir = mkdtempSync(join(tmpdir(), 'wcag-cli-refresh-'));
+  const requested = [];
+  const fetchImpl = async (url) => {
+    requested.push(url);
+    const hit = Object.entries(routes).find(([prefix]) => url.startsWith(prefix));
+    return hit ? new Response(hit[1], { status: 200 }) : new Response('not found', { status: 404 });
+  };
+  configureDataset({ cacheDir: dir, fetchImpl });
+  try {
+    return await fn(requested);
+  } finally {
+    configureDataset();
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+test('withActMarkup downloads only the examples whose git hash changed', async () => {
+  const bundled = JSON.parse(readFileSync(new URL('../data/act.json', import.meta.url), 'utf8'))['23a2a8'];
+  const [same, changed] = bundled.testcases;
+  const edited = '<!DOCTYPE html><img alt="edited" src="x.png" />';
+  const tree = JSON.stringify({
+    tree: [
+      { path: same.path.replace(/^testcases\//, ''), type: 'blob', sha: gitBlobSha(same.html) },
+      { path: changed.path.replace(/^testcases\//, ''), type: 'blob', sha: gitBlobSha(edited) },
+    ],
+  });
+  await withFakeNetwork(
+    { 'https://api.github.com/': tree, [`https://raw.githubusercontent.com/w3c/wcag-act-rules/main/content-assets/wcag-act-rules/${changed.path}`]: edited },
+    async (requested) => {
+      const out = await withActMarkup('23a2a8', [same, changed]);
+      assert.equal(out[0].html, same.html);
+      assert.equal(out[1].html, edited);
+      assert.equal(requested.filter((u) => u.startsWith('https://raw.githubusercontent.com/')).length, 1);
+    }
+  );
+});
+
+test('getActRules serves a refreshed rule list, with statuses from the rules page', async () => {
+  const testcases = JSON.stringify({
+    testcases: [{ ruleId: 'new123', ruleName: 'A new rule', rulePage: 'https://w/new123/proposed/', ruleAccessibilityRequirements: { 'wcag20:1.1.1': { forConformance: true } },
+      testcaseId: 'abc', testcaseTitle: 'Passed Example 1', expected: 'passed', relativePath: 'testcases/new123/abc.html' }],
+  });
+  const list = '<li class="act-rule" data-status="approved"><a href="/WAI/standards-guidelines/act/rules/new123/proposed/">A new rule</a></li>';
+  await withFakeNetwork(
+    { 'https://www.w3.org/WAI/content-assets/wcag-act-rules/testcases.json': testcases, 'https://www.w3.org/WAI/standards-guidelines/act/rules/': list },
+    async () => {
+      const rules = await getActRules();
+      assert.deepEqual(Object.keys(rules), ['new123']);
+      assert.equal(rules.new123.status, 'approved');
+      assert.equal(rules.new123.url, 'https://www.w3.org/WAI/standards-guidelines/act/rules/new123/');
+    }
+  );
+});
+
+test('findTechnique answers for a technique retired after the bundle was built', async () => {
+  const page = `<html><head><title>[Obsolete] H999: Using a retired element | WAI | W3C</title></head><body class="obsolete">
+    <section class="box obsolete-message"><h2>Obsolete</h2><div>Retired in this test.</div></section>
+    <section id="description"><h2>Description</h2><p>Old advice.</p></section></body></html>`;
+  await withFakeNetwork({ 'https://www.w3.org/WAI/WCAG22/Techniques/html/H999': page }, async () => {
+    const technique = await findTechnique('h999');
+    assert.equal(technique.title, 'Using a retired element');
+    assert.equal(technique.obsolete, 'Retired in this test.');
+    assert.deepEqual((await getTechniqueBody('H999')).description, ['Old advice.']);
+    assert.equal(await findTechnique('H998'), undefined);
+  });
 });

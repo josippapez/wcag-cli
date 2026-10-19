@@ -12,6 +12,12 @@ import {
   parseTechnique,
   parseSpecExtras,
   parseErrata,
+  parseObsolete,
+  parseActTestcases,
+  applyActRuleStatuses,
+  parseActRuleStatuses,
+  parseActTree,
+  gitBlobSha,
 } from '../src/w3c.js';
 
 // --- URLs are derived from the version, so a future WCAG 2.x needs no code ---
@@ -311,4 +317,55 @@ test('parseErrata: each dated item carries its date, text, PR links and the publ
 
 test('parseErrata: the table-of-contents links are not errata', () => {
   assert.deepEqual(parseErrata('<nav><ul><li><a href="#x">Errata since X</a></li></ul></nav>'), []);
+});
+
+test('parseErrata: a commit link counts as the change, like a pull request', () => {
+  const [item] = parseErrata(`<h2>Errata since <a href="x">Current Publication</a></h2><h3>Editorial Errata</h3><ul>
+    <li> 2026-08-25: Changing "touch screen" to "touchscreen"
+    (<a href="https://github.com/w3c/wcag/commit/61900d5" aria-label="commit 61900d5">61900d5</a>) </li></ul>`);
+  assert.equal(item.text, 'Changing "touch screen" to "touchscreen"');
+  assert.deepEqual(item.changes, ['https://github.com/w3c/wcag/commit/61900d5']);
+});
+
+test('parseObsolete: reads the title and notice of a retired technique, and ignores other pages', () => {
+  const html = `<html><head><title>[Obsolete] F70: Failure of Success Criterion 4.1.1 due to bad tags | WAI | W3C</title></head>
+    <body dir="ltr" class="obsolete"><section class="box obsolete-message"><h2 class="box-h">Obsolete</h2>
+    <div class="box-i">This failure relates to 4.1.1 Parsing.</div></section></body></html>`;
+  assert.deepEqual(parseObsolete(html), {
+    title: 'Failure of Success Criterion 4.1.1 due to bad tags',
+    message: 'This failure relates to 4.1.1 Parsing.',
+  });
+  assert.equal(parseObsolete('<html><body class="x"></body></html>'), null);
+});
+
+test('parseActTestcases: groups test cases by rule and keeps conformance vs related criteria apart', () => {
+  const req = { 'wcag20:1.1.1': { forConformance: true }, 'wcag20:4.1.2': { secondary: 'less strict' }, 'wcag-technique:H37': {} };
+  const tc = (id, expected) => ({
+    ruleId: 'r1', ruleName: 'Rule', rulePage: 'https://x/r1/', approved: true, ruleAccessibilityRequirements: req,
+    testcaseId: id, testcaseTitle: `${expected} 1`, expected, relativePath: `testcases/r1/${id}.html`,
+  });
+  const rules = parseActTestcases({ testcases: [tc('a', 'passed'), tc('b', 'failed')] });
+  assert.deepEqual(rules.r1.criteria, [{ num: '1.1.1', secondary: false }, { num: '4.1.2', secondary: true }]);
+  assert.deepEqual(rules.r1.techniques, ['H37']);
+  assert.deepEqual(rules.r1.testcases.map((t) => t.expected), ['passed', 'failed']);
+});
+
+test('applyActRuleStatuses: takes the status from the rules list and links approved rules to their approved page', () => {
+  const rules = { abc123: { id: 'abc123', url: 'https://x/rules/abc123/proposed/', status: null }, def456: { id: 'def456', url: 'p', status: null } };
+  const statuses = parseActRuleStatuses(`
+    <li class="act-rule" data-status="approved" data-implement="auto"><a href="/WAI/standards-guidelines/act/rules/abc123/proposed/">A</a></li>
+    <li class="act-rule has-atomic-rules" data-status="proposed"><a href="/WAI/standards-guidelines/act/rules/def456/proposed/">B</a></li>`);
+  assert.deepEqual(statuses, { abc123: 'approved', def456: 'proposed' });
+  applyActRuleStatuses(rules, statuses);
+  assert.equal(rules.abc123.status, 'approved');
+  assert.equal(rules.abc123.url, 'https://www.w3.org/WAI/standards-guidelines/act/rules/abc123/');
+  assert.equal(rules.def456.status, 'proposed');
+  assert.equal(rules.def456.url, 'p');
+});
+
+test('parseActTree and gitBlobSha: the hash GitHub lists for a file matches the hash of its content', () => {
+  // `printf 'hello\n' | git hash-object --stdin`
+  assert.equal(gitBlobSha('hello\n'), 'ce013625030ba8dba906f756967f9e9ca394464a');
+  const hashes = parseActTree(JSON.stringify({ tree: [{ path: 'r1', type: 'tree', sha: 'x' }, { path: 'r1/a.html', type: 'blob', sha: 'y' }] }));
+  assert.deepEqual(hashes, { 'testcases/r1/a.html': 'y' });
 });

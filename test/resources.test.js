@@ -274,3 +274,21 @@ test('loadUnderstanding: a cache entry from before test rules existed is not ser
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('loadResource: a 404 with nothing local is the answer, so it prints no refresh warning', async () => {
+  const dir = tmp();
+  const written = [];
+  const original = process.stderr.write;
+  process.stderr.write = (chunk) => (written.push(String(chunk)), true);
+  try {
+    const { impl } = spy(htmlResponse('Not Found', 404));
+    const data = await loadResource('techniques-obsolete/H9999', { ...TECHNIQUE_INDEX, cacheDir: dir, now: NOW, fetchImpl: impl });
+    assert.equal(data, null);
+    const kept = await loadResource('techniques-index', { ...TECHNIQUE_INDEX, cacheDir: dir, now: NOW, fetchImpl: impl, bundled: () => [{ id: 'B' }] });
+    assert.deepEqual(kept, [{ id: 'B' }]);
+  } finally {
+    process.stderr.write = original;
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(written.length, 1, 'only the 404 that had local data to fall back on is reported');
+});
