@@ -11,7 +11,7 @@ This criterion was originally adopted to address problems that assistive technol
 
 ## Details
 
-> **Note:** This criterion was originally adopted to address problems that assistive technology had directly parsing <abbr title="HyperText Markup Language">HTML</abbr>. Assistive technology no longer has any need to directly parse <abbr title="HyperText Markup Language">HTML</abbr>. Consequently, these problems either no longer exist or are addressed by other criteria. This criterion no longer has utility and is removed.
+> **Note:** This criterion was originally adopted to address problems that assistive technology had directly parsing HTML. Assistive technology no longer has any need to directly parse HTML. Consequently, these problems either no longer exist or are addressed by other criteria. This criterion no longer has utility and is removed.
 
 ## Links
 

@@ -121,3 +121,20 @@ test('buildToolArgs: a `positional` optional string property takes the positiona
   assert.deepEqual(buildToolArgs(tool, ['credit', 'card'], { flag: true }), { query: 'credit card', flag: true });
   assert.deepEqual(buildToolArgs(tool, [], {}), {});
 });
+
+test('buildToolArgs: enum values are case-folded to the declared spelling', () => {
+  const tool = { inputSchema: { properties: { level: { type: 'string', enum: ['A', 'AA', 'AAA'] } }, required: ['level'] } };
+  assert.equal(buildToolArgs(tool, ['aa'], {}).level, 'AA');
+});
+
+test('buildToolArgs: a value outside the enum is an error naming the allowed values', () => {
+  const tool = { inputSchema: { properties: { group_by: { type: 'string', enum: ['level', 'principle'] } }, required: ['group_by'] } };
+  assert.throws(() => buildToolArgs(tool, ['foo'], {}), /invalid group_by "foo": expected one of level, principle/);
+});
+
+test('parseArgv: a flag before the command does not swallow the command name', () => {
+  const r = parseArgv(['--normative', 'get-criterion', '1.4.3'], (name) => name === 'get-criterion');
+  assert.equal(r.command, 'get-criterion');
+  assert.deepEqual(r.positionals, ['1.4.3']);
+  assert.equal(r.flags.normative, true);
+});

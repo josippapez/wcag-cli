@@ -225,8 +225,9 @@ async function tryFetchWcag({ fetchImpl, validator, paths, now, url }) {
     }
 
     if (!res.ok) {
-      note(`wcag-cli: dataset refresh failed (HTTP ${res.status}); using cached data`);
-      return null;
+      // With nothing to fall back to, the caller reports the status instead.
+      if (validator) note(`wcag-cli: dataset refresh failed (HTTP ${res.status}); using cached data`);
+      return { status: res.status };
     }
 
     const text = await res.text();
@@ -323,6 +324,7 @@ export async function loadDataset({
   // rather than off the machine's own first use. The cost is one conditional
   // GET per install, and because the bundled ETag goes out with it, the usual
   // answer is a 304 with an empty body.
+  let failedStatus;
   if (!noNetwork && paths) {
     // A validator is only worth sending alongside a body we can actually
     // serve if the answer comes back 304. The runtime cache is the first
@@ -338,12 +340,16 @@ export async function loadDataset({
         : bundled && { meta: bundled, body: readBundledWcag(), readText: readBundledWcagText, onDisk: false };
     const fetched = await tryFetchWcag({ fetchImpl, validator, paths, now, url });
     if (fetched && fetched.wcag) return fetched;
+    failedStatus = fetched?.status;
   }
 
   if (cachedBody && cachedMeta) {
     return { wcag: cachedBody, meta: cachedMeta };
   }
 
+  if (!bundledFloor && failedStatus) {
+    throw new Error(`no data for WCAG ${version}: ${url} responded HTTP ${failedStatus}`);
+  }
   if (!bundledFloor) {
     throw new Error(
       `no local data for WCAG ${version}: only WCAG ${DEFAULT_VERSION} is bundled, so the first ` +
@@ -381,7 +387,10 @@ export async function loadUnderstanding(num, {
   }
 
   const path = cacheDir ? understandingCachePath(cacheDir, num) : null;
-  const cached = path ? readJsonSafe(path) : null;
+  // Entries written before 0.3.0 have no keyTerms or testRules; serving one
+  // would hide both until its week ran out, so it counts as no entry.
+  const entry = path ? readJsonSafe(path) : null;
+  const cached = entry && 'testRules' in entry ? entry : null;
 
   if (cached && !refresh && !isStale(cached.fetchedAt, now)) {
     return stripFetchedAt(cached);

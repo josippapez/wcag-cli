@@ -488,7 +488,9 @@ export function getErrata() {
     ...loaderOptions(),
     url: urls().errata,
     parse: parseErrata,
-    validate: Array.isArray,
+    // Every published version has errata, so an empty list is a page that
+    // is not the errata page (a challenge, a template change), not news.
+    validate: (list) => list.length > 0,
     bundled: () => bundledFloor('errata'),
   });
   return errataPromise;
@@ -624,7 +626,12 @@ export function textResponse(text, data) {
 
 // Keep dotted and hyphenated runs whole: "1.4.3" and "aria-live" are single
 // terms, and splitting them would match far too much ("1", "4", "3").
-const TOKEN_RE = /[a-z0-9][a-z0-9.'-]*/g;
+// Punctuation only counts inside a run, so "color." reads as "color".
+const TOKEN_RE = /[a-z0-9]+(?:[.'-][a-z0-9]+)*/g;
+
+// The halves of a hyphenated word, so "describedby" finds "aria-describedby"
+// and "user-agent" finds "user agent". Dots are not split: see TOKEN_RE.
+const hyphenParts = (token) => (token.includes('-') ? token.split('-') : []);
 
 // One token in, one or more out. Spelling and compounding variants only — this
 // is not a thesaurus, and it is applied to BOTH the query and the corpus so the
@@ -677,6 +684,7 @@ export function tokenise(text) {
   const out = new Set();
   for (const raw of String(text ?? '').toLowerCase().match(TOKEN_RE) ?? []) {
     for (const token of VARIANTS.get(raw) ?? [raw]) out.add(stem(token));
+    for (const part of hyphenParts(raw)) out.add(stem(part));
   }
   return out;
 }
@@ -690,6 +698,10 @@ export function queryTerms(query) {
     // conjunction: both halves must appear. A synonym list is a disjunction.
     if (VARIANTS.has(raw)) {
       for (const token of expanded) terms.push([stem(token)]);
+    } else if (hyphenParts(raw).length > 0) {
+      // Each half must appear, which the corpus side guarantees for the
+      // hyphenated spelling and also allows for the spaced one.
+      for (const part of hyphenParts(raw)) terms.push([stem(part)]);
     } else {
       terms.push(expanded.map(stem));
     }
@@ -700,10 +712,14 @@ export function queryTerms(query) {
 // A query term matches a corpus token on stem equality or as a prefix, so
 // "keyb" finds "keyboard" and "focus" finds "focusable". Very short terms must
 // match exactly, or "a" would hit everything.
+// A dotted number matches itself or the numbers under it ("1.4" finds 1.4.10),
+// never a longer sibling ("1.4.1" must not find 1.4.10).
 function termMatches(alternatives, tokens) {
-  return alternatives.some((alt) =>
-    alt.length <= 2 ? tokens.has(alt) : [...tokens].some((token) => token.startsWith(alt))
-  );
+  return alternatives.some((alt) => {
+    if (alt.length <= 2) return tokens.has(alt);
+    if (alt.includes('.')) return [...tokens].some((token) => token === alt || token.startsWith(`${alt}.`));
+    return [...tokens].some((token) => token.startsWith(alt));
+  });
 }
 
 /**

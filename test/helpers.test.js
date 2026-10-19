@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   configureDataset,
+  getErrata,
   dataset,
   getPrinciples,
   getTerms,
@@ -506,4 +507,36 @@ test('rankBy sorts by score and breaks ties on corpus order', () => {
   const items = [{ n: 'a' }, { n: 'b' }, { n: 'c' }];
   const ranked = rankBy(items, (i) => (i.n === 'c' ? { score: 9 } : { score: 1 }));
   assert.deepEqual(ranked.map((r) => r.item.n), ['c', 'a', 'b'], 'ties keep original order');
+});
+
+test('scoreFields matches either half of a hyphenated word, and a hyphenated query against spaced prose', () => {
+  const fields = [{ label: 'Title', weight: 1, text: 'Using aria-describedby to label the user agent' }];
+  assert.ok(scoreFields('describedby', fields));
+  assert.ok(scoreFields('aria-describedby', fields));
+  assert.ok(scoreFields('user-agent', fields));
+});
+
+test('scoreFields ignores trailing punctuation on a query word', () => {
+  assert.ok(scoreFields('Use of Color.', [{ label: 'Title', weight: 1, text: 'Use of Color' }]));
+});
+
+test('scoreFields matches a criterion number exactly, or as a parent of deeper numbers', () => {
+  const field = (num) => [{ label: 'Criterion', weight: 1, text: `${num} Something` }];
+  assert.ok(scoreFields('1.4.1', field('1.4.1')));
+  assert.equal(scoreFields('1.4.1', field('1.4.10')), null);
+  assert.ok(scoreFields('1.4', field('1.4.10')));
+});
+
+test('getErrata does not cache a 200 page that parses to no errata', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wcag-cli-errata-'));
+  try {
+    const fetchImpl = async () => new Response('<html>Just a moment...</html>', { status: 200 });
+    configureDataset({ cacheDir: dir, fetchImpl });
+    const errata = await getErrata();
+    assert.ok(errata.length > 0, 'falls back to the bundled errata');
+    assert.equal(existsSync(join(dir, 'errata.json')), false, 'nothing cached');
+  } finally {
+    configureDataset();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

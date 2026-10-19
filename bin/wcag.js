@@ -99,7 +99,7 @@ function reclaimBooleanFlagValues(tool, positionals, flags, swallowedAt = {}) {
 
 async function main() {
   const { globals, rest } = extractGlobalFlags(process.argv.slice(2));
-  const { command, positionals, flags, help, swallowedAt } = parseArgv(rest);
+  const { command, positionals, flags, help, swallowedAt } = parseArgv(rest, (name) => tools.some((t) => t.name === name));
 
   if (command === undefined) {
     printCommandList();
@@ -151,7 +151,7 @@ async function main() {
   // The version is validated here, before any lookup, so a typo like
   // `--wcag 22` is a usage error and not a failed fetch of a URL that never
   // existed. The flag wins over WCAG_CLI_VERSION, which wins over the default.
-  const version = globals.version ?? process.env.WCAG_CLI_VERSION ?? DEFAULT_VERSION;
+  const version = globals.version ?? (process.env.WCAG_CLI_VERSION || DEFAULT_VERSION);
   try {
     wcagUrls(version);
   } catch (err) {

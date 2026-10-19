@@ -7,7 +7,7 @@
  * occupied in `swallowedAt`, letting the caller put it back where the user typed
  * it rather than guessing.
  */
-export function parseArgv(argv) {
+export function parseArgv(argv, isCommand = () => false) {
   const out = { command: undefined, positionals: [], flags: {}, help: false, swallowedAt: {} };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -22,7 +22,10 @@ export function parseArgv(argv) {
         out.flags[body.slice(0, eq)] = body.slice(eq + 1);
       } else {
         const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith('--')) {
+        // Before the command, a flag followed by a command name is a boolean
+        // (`--normative get-criterion 1.4.3`), not a flag taking the command.
+        const nextIsCommand = out.command === undefined && next !== undefined && isCommand(next);
+        if (next !== undefined && !next.startsWith('--') && !nextIsCommand) {
           out.flags[body] = next;
           out.swallowedAt[body] = out.positionals.length;
           i++;
@@ -43,11 +46,18 @@ export function buildToolArgs(tool, positionals, flags) {
   const props = tool.inputSchema?.properties ?? {};
   const required = tool.inputSchema?.required ?? [];
   const args = {};
-  const coerce = (prop, v) => {
+  const coerce = (prop, v, name) => {
     const t = prop?.type;
     if (t === 'boolean') return v === true || v === 'true';
     if (t === 'number' || t === 'integer') return Number(v);
-    return String(v);
+    if (!prop?.enum) return String(v);
+    // Case-folded, so `aa` reads as `AA`; anything else is a usage error
+    // rather than a filter that silently matches nothing.
+    const match = prop.enum.find((option) => option.toLowerCase() === String(v).toLowerCase());
+    if (match === undefined) {
+      throw new Error(`invalid ${name} ${JSON.stringify(String(v))}: expected one of ${prop.enum.join(', ')}`);
+    }
+    return match;
   };
   // An optional filter can also be typed as bare words when its property is
   // marked `positional: true` and nothing is required (`list-input-purposes tel`).
@@ -56,16 +66,16 @@ export function buildToolArgs(tool, positionals, flags) {
     Object.keys(props).find((name) => props[name].positional && props[name].type === 'string');
   if (required.length === 1 && props[required[0]]?.type === 'string') {
     const name = required[0];
-    if (positionals.length > 0) args[name] = coerce(props[name], positionals.join(' '));
+    if (positionals.length > 0) args[name] = coerce(props[name], positionals.join(' '), name);
   } else if (optionalPositional) {
-    if (positionals.length > 0) args[optionalPositional] = coerce(props[optionalPositional], positionals.join(' '));
+    if (positionals.length > 0) args[optionalPositional] = coerce(props[optionalPositional], positionals.join(' '), optionalPositional);
   } else {
     required.forEach((name, idx) => {
-      if (positionals[idx] !== undefined) args[name] = coerce(props[name], positionals[idx]);
+      if (positionals[idx] !== undefined) args[name] = coerce(props[name], positionals[idx], name);
     });
   }
   for (const [k, v] of Object.entries(flags)) {
-    if (props[k]) args[k] = coerce(props[k], v);
+    if (props[k]) args[k] = coerce(props[k], v, k);
   }
   return args;
 }

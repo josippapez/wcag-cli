@@ -96,7 +96,7 @@ function criterionData({ principle, guideline, sc }, understanding) {
     principle: { num: principle.num, handle: principle.handle },
     guideline: { num: guideline.num, handle: guideline.handle },
     text: sc.title,
-    details: sc.details ?? [],
+    details: plainDetails(sc),
     understanding: understanding
       ? {
           brief: understanding.brief ?? {},
@@ -111,11 +111,22 @@ function criterionData({ principle, guideline, sc }, understanding) {
   };
 }
 
+// wcag.json keeps inline markup (<abbr>, <em>, <cite>, even a <ul>) in a few
+// criteria's notes; the HTML stays in the data for the key-term links, and is
+// dropped here, where it would otherwise reach the reader verbatim.
+function plainDetails(sc) {
+  return (sc.details ?? []).map((detail) => ({
+    ...detail,
+    ...(detail.text !== undefined && { text: stripHtml(detail.text) }),
+    ...(detail.items && { items: detail.items.map((item) => ({ ...item, text: stripHtml(item.text) })) }),
+  }));
+}
+
 /** Shared renderer for a criterion's normative `details` (exceptions, notes). */
 function renderDetails(sc) {
   if (!sc.details || sc.details.length === 0) return '';
   let out = '## Details\n\n';
-  for (const detail of sc.details) {
+  for (const detail of plainDetails(sc)) {
     if (detail.type === 'ulist' && detail.items) {
       for (const item of detail.items) {
         out += item.handle ? `- **${item.handle}:** ${item.text}\n` : `- ${item.text}\n`;
@@ -778,7 +789,7 @@ const getTechnique = {
     // Copy before sorting: `technique` comes from the memoised getAllTechniques
     // index, so an in-place sort would mutate shared state.
     const criteria = [];
-    for (const scNum of [...technique.criteria].sort()) {
+    for (const scNum of [...technique.criteria].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) {
       const result = await findSuccessCriterion(scNum);
       if (result) criteria.push(result.sc);
     }
@@ -880,6 +891,7 @@ const getTechniquesForCriterionTool = {
             (item.techniques?.length ?? 0) > 0 || (item.groups?.length ?? 0) > 0;
           if (!isGrouping) {
             text += `${indent}- ${stripHtml(item.title)}\n`;
+            if (item.using) text += formatTechniques(item.using, `${indent}  `);
             continue;
           }
           text += `${indent}**${stripHtml(item.title)}**\n`;
@@ -893,9 +905,10 @@ const getTechniquesForCriterionTool = {
           if (item.using) text += formatTechniques(item.using, `${indent}  `);
         } else if (item.and) {
           text += `${indent}- Combined techniques:\n`;
-          for (const andItem of item.and) {
-            if (andItem.id) text += `${indent}  - **${andItem.id}**: ${andItem.title}\n`;
-          }
+          text += formatTechniques(item.and, `${indent}  `);
+          // The `using` list applies to the combination as a whole, so it
+          // sits under the last member rather than beside the members.
+          if (item.using) text += formatTechniques(item.using, `${indent}    `);
         }
       }
       return text;

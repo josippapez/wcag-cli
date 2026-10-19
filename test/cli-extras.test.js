@@ -182,3 +182,41 @@ test('get-technique --brief keeps description, tests and related techniques, dro
   assert.ok(brief.length < full.length);
   assert.deepEqual(JSON.parse(run(['get-technique', 'H37', '--brief', '--json'])).examples, []);
 });
+
+// --- get-techniques-for-criterion ----------------------------------------------
+
+test('get-techniques-for-criterion prints every technique in the W3C tree', () => {
+  const ids = (items, out = []) => {
+    for (const item of items ?? []) {
+      if (item.id) out.push(item.id);
+      ids(item.techniques, out);
+      for (const group of item.groups ?? []) ids(group.techniques, out);
+      ids(item.using, out);
+      ids(item.and, out);
+    }
+    return out;
+  };
+  for (const num of ['1.3.1', '2.4.4', '1.2.4']) {
+    const { techniques } = JSON.parse(run(['get-techniques-for-criterion', num, '--json']));
+    const text = run(['get-techniques-for-criterion', num]);
+    const all = ids([...techniques.sufficient, ...techniques.advisory, ...techniques.failure]);
+    const missing = all.filter((id) => !text.includes(`**${id}**`));
+    assert.deepEqual(missing, [], `${num} text output is missing ${missing.join(', ')}`);
+  }
+});
+
+test('criterion details carry no HTML markup, in text or --json', () => {
+  for (const num of ['1.4.13', '2.4.11', '2.4.13', '3.3.8', '4.1.1', '4.1.2']) {
+    assert.doesNotMatch(run(['get-criterion', num, '--normative']), /<\/?(abbr|em|cite|ul|li)\b/, num);
+    assert.doesNotMatch(JSON.stringify(JSON.parse(run(['get-criterion', num, '--json'])).details), /<\/?(abbr|em|cite|ul|li)\b/, num);
+  }
+});
+
+test('related success criteria are listed in numeric order', () => {
+  const text = run(['get-technique', 'G174']);
+  assert.ok(text.indexOf('**1.4.3**') < text.indexOf('**1.4.11**'));
+});
+
+test('an empty WCAG_CLI_VERSION falls back to the default version', () => {
+  assert.match(run(['list-principles'], { ...ENV, WCAG_CLI_VERSION: '' }), /WCAG 2\.2/);
+});

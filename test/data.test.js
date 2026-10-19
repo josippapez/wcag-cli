@@ -219,7 +219,7 @@ test('loadUnderstanding: 200 with no intent text is rejected, cache is kept (lie
   const dir = makeTmpCacheDir();
   try {
     mkdirSync(join(dir, 'understanding'), { recursive: true });
-    const stale = { brief: { goal: 'kept' }, intent: 'kept intent', benefits: [], resources: [], fetchedAt: STALE_META.fetchedAt };
+    const stale = { brief: { goal: 'kept' }, intent: 'kept intent', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: STALE_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.1.1.json'), JSON.stringify(stale));
 
     // off-template HTML: parseUnderstanding degrades to empty shapes rather
@@ -586,7 +586,7 @@ test('loadUnderstanding: fresh per-criterion cache serves cached data and never 
   const dir = makeTmpCacheDir();
   try {
     mkdirSync(join(dir, 'understanding'), { recursive: true });
-    const cached = { brief: { goal: 'cached' }, intent: 'x', benefits: [], resources: [], fetchedAt: FRESH_META.fetchedAt };
+    const cached = { brief: { goal: 'cached' }, intent: 'x', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: FRESH_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.1.1.json'), JSON.stringify(cached));
 
     const spy = makeFetchSpy({ ok: true, status: 200, headers: { get: () => null }, text: async () => '' });
@@ -603,7 +603,7 @@ test('loadUnderstanding: stale per-criterion cache refreshes only that criterion
   const dir = makeTmpCacheDir();
   try {
     mkdirSync(join(dir, 'understanding'), { recursive: true });
-    const stale = { brief: { goal: 'old' }, intent: 'old', benefits: [], resources: [], fetchedAt: STALE_META.fetchedAt };
+    const stale = { brief: { goal: 'old' }, intent: 'old', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: STALE_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.1.1.json'), JSON.stringify(stale));
 
     const html = '<section id="intent"><h2>Intent</h2><p>The refreshed intent.</p></section>';
@@ -629,9 +629,9 @@ test('loadUnderstanding: refreshing 1.1.1 does not touch a sibling criterion cac
   const dir = makeTmpCacheDir();
   try {
     mkdirSync(join(dir, 'understanding'), { recursive: true });
-    const sibling = { brief: { goal: 'untouched' }, intent: 'x', benefits: [], resources: [], fetchedAt: STALE_META.fetchedAt };
+    const sibling = { brief: { goal: 'untouched' }, intent: 'x', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: STALE_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.4.3.json'), JSON.stringify(sibling));
-    const stale = { brief: { goal: 'old' }, intent: 'old', benefits: [], resources: [], fetchedAt: STALE_META.fetchedAt };
+    const stale = { brief: { goal: 'old' }, intent: 'old', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: STALE_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.1.1.json'), JSON.stringify(stale));
 
     const fetchImpl = async () => ({
@@ -661,7 +661,7 @@ test('loadUnderstanding: fetch throwing falls back to stale cache, then bundle',
     assert.deepEqual(entryFromBundle, bundledUnderstanding['1.1.1']);
 
     mkdirSync(join(dir, 'understanding'), { recursive: true });
-    const stale = { brief: { goal: 'kept' }, intent: 'x', benefits: [], resources: [], fetchedAt: STALE_META.fetchedAt };
+    const stale = { brief: { goal: 'kept' }, intent: 'x', benefits: [], resources: [], keyTerms: [], testRules: [], fetchedAt: STALE_META.fetchedAt };
     writeFileSync(join(dir, 'understanding', '1.1.1.json'), JSON.stringify(stale));
     const entryFromCache = await silencingStderr(() =>
       loadUnderstanding('1.1.1', { cacheDir: dir, now: NOW, fetchImpl: throwingImpl })

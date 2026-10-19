@@ -245,3 +245,32 @@ test('every loader sends a wcag-cli User-Agent', async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('loadDataset: a version w3.org does not publish reports the HTTP status, not a network problem', async () => {
+  const dir = tmp();
+  try {
+    const { impl } = spy(htmlResponse('Not Found', 404));
+    await assert.rejects(
+      loadDataset({ version: '2.0', cacheDir: dir, now: NOW, fetchImpl: impl }),
+      /no data for WCAG 2\.0: https:\/\/www\.w3\.org\/WAI\/WCAG20\/wcag\.json responded HTTP 404/
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadUnderstanding: a cache entry from before test rules existed is not served', async () => {
+  const dir = tmp();
+  try {
+    mkdirSync(join(dir, 'understanding'), { recursive: true });
+    writeFileSync(
+      join(dir, 'understanding', '1.1.1.json'),
+      JSON.stringify({ brief: {}, intent: 'old', benefits: [], examples: [], resources: [], fetchedAt: FRESH })
+    );
+    const entry = await loadUnderstanding('1.1.1', { cacheDir: dir, now: NOW, noNetwork: true });
+    assert.notEqual(entry.intent, 'old');
+    assert.ok(entry.testRules.length > 0, 'the bundled entry, with its test rules');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
