@@ -1,0 +1,25 @@
+# Publishes to npm when a version tag is pushed (npm version patch && git push --follow-tags).
+# npm's trusted publishing authenticates through GitHub's OIDC token, so no npm token is stored.
+# It needs npm 11.5.1 or later, which Node 24 bundles. prepublishOnly runs the tests.
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - run: npm publish
