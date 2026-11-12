@@ -226,7 +226,9 @@ deliberately **lexical, not semantic** — no embeddings, no model, no network:
   results plus a `total`.
 
 It has no idea what words *mean*. `alt text` will not find `text alternative`
-by concept — only the small folding list above bridges wording differences. For
+by concept — only the small folding list above, plus a few everyday words
+(`subtitles` for captions, `colorblind` for color, `magnifier` for zoom,
+`podcast` for audio, `toast` for status messages), bridges wording differences. For
 a corpus of 87 criteria, 432 techniques and a few megabytes of prose, that trade buys a
 zero-dependency, offline, deterministic tool, and the results stay explainable.
 

@@ -778,6 +778,20 @@ const VARIANTS = new Map([
 const QUERY_SYNONYMS = new Map([
   ['alt', ['alt', 'alternative']],
   ['a11y', ['accessibility']],
+  // Everyday words for things WCAG names differently; each one made a plain question miss
+  // its criterion ("subtitles on videos" found nothing, 1.2.2 says "captions").
+  ['subtitle', ['subtitle', 'caption']],
+  ['subtitles', ['subtitle', 'caption']],
+  ['colorblind', ['colorblind', 'color']],
+  ['colourblind', ['colorblind', 'color']],
+  ['magnifier', ['magnifier', 'magnification', 'zoom']],
+  ['magnifiers', ['magnifier', 'magnification', 'zoom']],
+  ['podcast', ['podcast', 'audio']],
+  ['podcasts', ['podcast', 'audio']],
+  ['toast', ['toast', 'status']],
+  ['toasts', ['toast', 'status']],
+  ['fix', ['fix', 'correct']],
+  ['order', ['order', 'sequence']],
 ]);
 
 /**

@@ -79,3 +79,61 @@ test('search-wcag finds nothing for most off-topic queries', () => {
   });
   assert.ok(answered.length <= 2, `answered: ${answered.join(', ')}`);
 });
+
+// Questions worded the way people talk, avoiding WCAG's own terms. Before the everyday
+// synonyms (subtitles, colorblind, magnifier, podcast, toast, fix, order) 30 had a right
+// answer in the top 3. Four still miss: "colorblind users" (1.4.1 never says "users"),
+// "custom checkbox built from a div", "error message tells me how to fix it" (3.3.1 ranks
+// above 3.3.3) and "tables for layout". Closing those needs matching by meaning.
+const PARAPHRASED = [
+  ["describe images for blind users", ["1.1.1"]],
+  ["subtitles on videos", ["1.2.2", "1.2.4"]],
+  ["podcast transcript", ["1.2.1"]],
+  ["dyslexia friendly line spacing", ["1.4.12", "1.4.8"]],
+  ["screen magnifier users", ["1.4.4", "1.4.10"]],
+  ["tab order jumps around", ["2.4.3"]],
+  ["outline around the focused button", ["2.4.7", "2.4.13"]],
+  ["captcha", ["1.1.1"]],
+  ["logged out while filling a form", ["2.2.1", "2.2.6", "2.2.5"]],
+  ["reading order for screen readers", ["1.3.2"]],
+  ["colorblind users", ["1.4.1"]],
+  ["voice control users saying the button name", ["2.5.3"]],
+  ["swipe and pinch gestures", ["2.5.1"]],
+  ["accidental clicks", ["2.5.2"]],
+  ["blinking text", ["2.2.2"]],
+  ["foreign phrase inside a paragraph", ["3.1.2"]],
+  ["page changes when I pick a dropdown option", ["3.2.2"]],
+  ["navigation menu in the same order on every page", ["3.2.3"]],
+  ["abbreviations", ["3.1.4"]],
+  ["jargon and idioms", ["3.1.3"]],
+  ["text too hard to read", ["3.1.5"]],
+  ["toast notifications", ["4.1.3"]],
+  ["custom checkbox built from a div", ["4.1.2"]],
+  ["landscape only app", ["1.3.4"]],
+  ["background music too loud over speech", ["1.4.7", "1.4.2"]],
+  ["single letter keyboard shortcuts", ["2.1.4"]],
+  ["slider you have to drag", ["2.5.7"]],
+  ["pasting a password", ["3.3.8", "3.3.9"]],
+  ["confirm before a payment is submitted", ["3.3.4", "3.3.6"]],
+  ["popup that appears on mouse hover", ["1.4.13"]],
+  ["parallax animation makes me dizzy", ["2.3.3"]],
+  ["spoken description of what happens on screen", ["1.2.3", "1.2.5"]],
+  ["required fields marked with an asterisk", ["3.3.2", "1.3.1"]],
+  ["error message tells me how to fix it", ["3.3.3"]],
+  ["mobile users zooming in", ["1.4.4", "1.4.10"]],
+  ["chat widget covers the focused link", ["2.4.11", "2.4.12"]],
+  ["same help link location on every page", ["3.2.6"]],
+  ["grey placeholder text", ["1.4.3"]],
+  ["icon buttons need a text label", ["1.1.1", "4.1.2", "2.4.6", "2.5.3"]],
+  ["tables for layout", ["1.3.1"]],
+];
+
+test('search-wcag finds the right criterion for most questions worded in everyday terms', () => {
+  const misses = [];
+  for (const [query, accepted] of PARAPHRASED) {
+    const out = execFileSync('node', [BIN, 'search-wcag', query, '--json'], { encoding: 'utf8', env: ENV });
+    const top3 = JSON.parse(out).results.slice(0, 3).map((r) => r.num);
+    if (!top3.some((num) => accepted.includes(num))) misses.push(`${query} -> ${top3.join(', ') || 'nothing'}`);
+  }
+  assert.ok(misses.length <= 4, `misses:\n${misses.join('\n')}`);
+});
