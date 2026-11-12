@@ -79,6 +79,12 @@ wcag --wcag 2.1 list-success-criteria --level AA
     Intents. Bulk reads are always local (bundled snapshot plus existing cache),
     never a fetch, so one search cannot turn into 87 requests.
   - Example: `wcag search-wcag "placeholder" --understanding`
+  - When no criterion contains every word, it lists the 10 closest matches
+    instead, searching the Understanding prose too and counting rare words
+    more. Plain questions rarely use WCAG's wording throughout: 1.2.2 never says
+    "video", so `wcag search-wcag "video captions"` used to find nothing. A
+    query whose rarer words appear nowhere in WCAG, like "kubernetes pod
+    restart", still finds nothing.
 
 - **`get-criteria-by-level`** — Gets all success criteria for a specific conformance level. Optionally includes lower levels (e.g., AA includes A).
   - Example: `wcag get-criteria-by-level AA --include_lower`

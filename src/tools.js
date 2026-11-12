@@ -57,6 +57,7 @@ import {
   textResponse,
   scoreFields,
   rankBy,
+  rankByAnyTerm,
 } from './helpers.js';
 
 const NOT_FOUND_HINT = 'Use format like "1.1.1" or "2.4.7".';
@@ -466,7 +467,7 @@ const getGuideline = {
 const searchWcag = {
   name: 'search-wcag',
   description:
-    'Searches WCAG success criteria by keyword in titles and descriptions. Pass --understanding to also search the Understanding prose (intent, benefits, examples).',
+    'Searches WCAG success criteria by keyword in titles and descriptions. Pass --understanding to also search the Understanding prose (intent, benefits, examples). When no criterion contains every word, lists the 10 closest matches across the Understanding prose too.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -500,26 +501,34 @@ const searchWcag = {
 
     // Weighted so a term in the criterion's own handle outranks the same term
     // buried in an example, which is what makes ranking worth having at all.
+    const criterionFields = (sc) => [
+      // The number is what people actually type when they know the criterion,
+      // and it lived in no searched field: `search-wcag 1.4.3` found nothing.
+      { label: 'Criterion', weight: 6, text: sc.num },
+      { label: 'Criterion', weight: 5, text: sc.handle },
+      { label: 'Criterion', weight: 3, text: `${sc.title} ${stripHtml(sc.content)}` },
+    ];
     const scored = [];
     for (const [index, sc] of allCriteria.entries()) {
-      const fields = [
-        // The number is what people actually type when they know the criterion,
-        // and it lived in no searched field: `search-wcag 1.4.3` found nothing.
-        { label: 'Criterion', weight: 6, text: sc.num },
-        { label: 'Criterion', weight: 5, text: sc.handle },
-        { label: 'Criterion', weight: 3, text: `${sc.title} ${stripHtml(sc.content)}` },
-        ...(args.understanding ? await understandingFields(sc) : []),
-      ];
+      const fields = [...criterionFields(sc), ...(args.understanding ? await understandingFields(sc) : [])];
       const hit = scoreFields(args.query, fields);
       if (hit) scored.push({ sc, index, ...hit });
     }
     scored.sort((a, b) => b.score - a.score || a.index - b.index);
+
+    const closest = scored.length === 0;
+    if (closest) {
+      const records = [];
+      for (const sc of allCriteria) records.push({ fields: [...criterionFields(sc), ...(await understandingFields(sc))] });
+      for (const row of rankByAnyTerm(args.query, records, 10)) scored.push({ sc: allCriteria[row.index], ...row });
+    }
 
     const data = {
       version: getVersion(),
       query: args.query,
       level: args.level ?? null,
       understanding: args.understanding === true,
+      closestMatches: closest,
       results: scored.map(({ sc, score, labels }) => ({
         ...summaryWithGuideline(sc),
         text: sc.title,
@@ -529,26 +538,23 @@ const searchWcag = {
     };
 
     if (scored.length === 0) {
-      const hint = args.understanding
-        ? ''
-        : ' Try --understanding to search the Intent, Benefits and Examples prose as well.';
       return textResponse(
-        `No success criteria found matching "${args.query}"${args.level ? ` at level ${args.level}` : ''}.${hint}`,
+        `No success criteria found matching "${args.query}"${args.level ? ` at level ${args.level}` : ''}.`,
         data
       );
     }
 
     const output = scored
       .map(({ sc, labels }) => {
-        const where = args.understanding ? `\nmatched in: ${labels.join(', ')}` : '';
+        const where = args.understanding || closest ? `\nmatched in: ${labels.join(', ')}` : '';
         return `**${sc.num} ${sc.handle}** (${levelTag(sc)})\n${truncate(sc.title, 150)}${where}`;
       })
       .join('\n\n---\n\n');
 
-    return textResponse(
-      `# Search Results for "${args.query}" (${scored.length} found)\n\n${output}`,
-      data
-    );
+    const heading = closest
+      ? `# No criterion text contains every word of "${args.query}". Closest ${scored.length}, Understanding prose included, best first`
+      : `# Search Results for "${args.query}" (${scored.length} found)`;
+    return textResponse(`${heading}\n\n${output}`, data);
   },
 };
 

@@ -135,8 +135,8 @@ test('WCAG_CLI_NO_NETWORK=1 beats --refresh and writes no cache', () => {
 // real case that motivated the flag: absent from every SC title/description.
 test('search-wcag --understanding reaches prose the default search cannot', () => {
   const plain = run(['search-wcag', 'placeholder']);
-  assert.match(plain, /No success criteria found/);
-  assert.match(plain, /--understanding/, 'the miss should point at the flag');
+  assert.match(plain, /No criterion text contains every word of "placeholder"\. Closest/);
+  assert.match(plain, /matched in: /, 'the fallback says which section matched');
 
   const deep = run(['search-wcag', 'placeholder', '--understanding']);
   assert.match(deep, /Search Results for "placeholder"/);

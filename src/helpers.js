@@ -842,11 +842,16 @@ export function queryTerms(query) {
 // match exactly, or "a" would hit everything.
 // A dotted number matches itself or the numbers under it ("1.4" finds 1.4.10),
 // never a longer sibling ("1.4.1" must not find 1.4.10).
+// A term ending in "e" also matches its stem without the "e": the stemmer turns
+// "titled" and "titles" into "titl", which "title" is not a prefix of, so "page
+// title" missed 2.4.2 Page Titled. Exact match only, so "state" reaches "stated"
+// but not "static".
 function termMatches(alternatives, tokens) {
   return alternatives.some((alt) => {
     if (alt.length <= 2) return tokens.has(alt);
     if (alt.includes('.')) return [...tokens].some((token) => token === alt || token.startsWith(`${alt}.`));
-    return [...tokens].some((token) => token.startsWith(alt));
+    const withoutE = alt.length >= 5 && alt.endsWith('e') ? alt.slice(0, -1) : null;
+    return [...tokens].some((token) => token.startsWith(alt) || token === withoutE);
   });
 }
 
@@ -894,4 +899,57 @@ export function rankBy(items, score) {
     .map((item, index) => ({ item, index, ...(score(item) ?? {}) }))
     .filter((row) => row.score !== undefined)
     .sort((a, b) => b.score - a.score || a.index - b.index);
+}
+
+/**
+ * Closest matches for when no record contains every query word. Plain-language
+ * queries rarely use WCAG's own wording throughout: "video captions" found
+ * nothing because 1.2.2 never says "video". Here any word may match, and each
+ * match adds its field's weight times how rare the word is across `records`
+ * (BM25's idf), so "content shown on hover" ranks 1.4.13 on "hover" although
+ * its text never says "shown". AND matching stays the first pass because it is
+ * more precise whenever it finds anything.
+ *
+ * A record must match words carrying at least 40% of the query's idf. A word no
+ * record contains has the highest idf, so a mostly unrelated query ("best pizza
+ * in new york") returns nothing instead of ten criteria that mention "new". At
+ * 50%, "link text that makes sense" lost 2.4.4, so the bar sits just below.
+ *
+ * `records` is `[{ fields }]` with fields shaped as in scoreFields. Returns
+ * `[{ index, score, labels }]`, best first, ties in corpus order, at most `limit`.
+ */
+export function rankByAnyTerm(query, records, limit) {
+  const terms = queryTerms(query);
+  const prepared = records.map(({ fields }) =>
+    fields.map((field) => ({
+      ...field,
+      tokens: tokenise(Array.isArray(field.text) ? field.text.join(' ') : field.text),
+    }))
+  );
+  const idf = terms.map((term) => {
+    const df = prepared.filter((fields) => fields.some((field) => termMatches(term, field.tokens))).length;
+    return Math.log(1 + (prepared.length - df + 0.5) / (df + 0.5));
+  });
+  const totalIdf = idf.reduce((sum, value) => sum + value, 0);
+
+  const rows = [];
+  prepared.forEach((fields, index) => {
+    let score = 0;
+    let matchedIdf = 0;
+    const labels = new Set();
+    terms.forEach((term, i) => {
+      let matched = false;
+      for (const field of fields) {
+        if (!termMatches(term, field.tokens)) continue;
+        score += idf[i] * field.weight;
+        labels.add(field.label);
+        matched = true;
+      }
+      if (matched) matchedIdf += idf[i];
+    });
+    if (matchedIdf === 0 || matchedIdf < totalIdf * 0.4) return;
+    // Rounded so --json output stays byte-stable across platforms.
+    rows.push({ index, score: Math.round(score * 100) / 100, labels: [...labels] });
+  });
+  return rows.sort((a, b) => b.score - a.score || a.index - b.index).slice(0, limit);
 }

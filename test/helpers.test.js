@@ -21,6 +21,7 @@ import {
   tokenise,
   scoreFields,
   rankBy,
+  rankByAnyTerm,
   getAllTechniques,
   findSuccessCriterion,
   findPrinciple,
@@ -522,6 +523,31 @@ test('scoreFields matches either half of a hyphenated word, and a hyphenated que
 
 test('scoreFields ignores trailing punctuation on a query word', () => {
   assert.ok(scoreFields('Use of Color.', [{ label: 'Title', weight: 1, text: 'Use of Color' }]));
+});
+
+test('rankByAnyTerm matches records missing some words and ranks rare words higher', () => {
+  const record = (text) => ({ fields: [{ label: 'Text', weight: 1, text }] });
+  const records = [
+    record('content of the page'),
+    record('content that appears on hover'),
+    record('content and more content'),
+  ];
+  assert.equal(scoreFields('content shown on hover', records[1].fields), null, 'AND finds nothing');
+  const rows = rankByAnyTerm('content shown on hover', records, 10);
+  assert.equal(rows[0].index, 1, 'the rare word "hover" wins');
+  assert.deepEqual(rows[0].labels, ['Text']);
+  assert.equal(rankByAnyTerm('content', records, 2).length, 2, 'limit caps the list');
+  assert.deepEqual(rankByAnyTerm('elephant', records, 10), [], 'no word matches, no rows');
+});
+
+test('rankByAnyTerm drops records that match only a small share of the query', () => {
+  const records = [{ fields: [{ label: 'Text', weight: 1, text: 'new content in the page' }] }];
+  assert.deepEqual(rankByAnyTerm('best pizza in new york', records, 10), []);
+});
+
+test('a term ending in "e" matches its stem without the "e", exactly', () => {
+  assert.ok(scoreFields('page title', [{ label: 'Name', weight: 1, text: 'Page Titled' }]));
+  assert.equal(scoreFields('state', [{ label: 'Name', weight: 1, text: 'static' }]), null);
 });
 
 test('scoreFields matches a criterion number exactly, or as a parent of deeper numbers', () => {
