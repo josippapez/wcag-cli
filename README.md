@@ -220,6 +220,10 @@ deliberately **lexical, not semantic** — no embeddings, no model, no network:
   thirteen criteria under guideline 2.4.
 - **Relevance ranked.** A hit in a criterion's name outranks the same word buried
   in an example. Equal scores keep dataset order, so output is byte-stable.
+- **Top 10, one line each.** The three search commands print the 10 best
+  matches, one line per result, and the heading says how many there were in all
+  (`10 of 76 found`). `--limit N` shows more or fewer. `--json` returns the same
+  results plus a `total`.
 
 It has no idea what words *mean*. `alt text` will not find `text alternative`
 by concept — only the small folding list above bridges wording differences. For

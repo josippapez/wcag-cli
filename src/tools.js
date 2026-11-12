@@ -464,6 +464,21 @@ const getGuideline = {
   },
 };
 
+// Searches print at most this many results unless --limit asks for more: "search-techniques
+// focus --description" printed all 76 matches, 10 KB, most of it never read.
+const SEARCH_LIMIT = 10;
+const limitProperty = {
+  type: 'integer',
+  description: `Most results to show (default ${SEARCH_LIMIT})`,
+};
+function searchLimit(args) {
+  const limit = args.limit ?? SEARCH_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`invalid limit ${JSON.stringify(args.limit)}: expected a whole number of 1 or more`);
+  return limit;
+}
+const countLabel = (shown, total) =>
+  shown < total ? `${shown} of ${total} found, --limit for more` : `${total} found`;
+
 const searchWcag = {
   name: 'search-wcag',
   description:
@@ -482,10 +497,12 @@ const searchWcag = {
         description:
           'Also search the Understanding prose — intent, benefits and examples — and report which section matched',
       },
+      limit: limitProperty,
     },
     required: ['query'],
   },
   handler: async (args) => {
+    const limit = searchLimit(args);
     const allCriteria = await getAllSuccessCriteria({ level: args.level });
 
     const understandingFields = async (sc) => {
@@ -520,8 +537,10 @@ const searchWcag = {
     if (closest) {
       const records = [];
       for (const sc of allCriteria) records.push({ fields: [...criterionFields(sc), ...(await understandingFields(sc))] });
-      for (const row of rankByAnyTerm(args.query, records, 10)) scored.push({ sc: allCriteria[row.index], ...row });
+      for (const row of rankByAnyTerm(args.query, records, limit)) scored.push({ sc: allCriteria[row.index], ...row });
     }
+    const total = scored.length;
+    const shown = scored.slice(0, limit);
 
     const data = {
       version: getVersion(),
@@ -529,7 +548,8 @@ const searchWcag = {
       level: args.level ?? null,
       understanding: args.understanding === true,
       closestMatches: closest,
-      results: scored.map(({ sc, score, labels }) => ({
+      total,
+      results: shown.map(({ sc, score, labels }) => ({
         ...summaryWithGuideline(sc),
         text: sc.title,
         score,
@@ -544,16 +564,16 @@ const searchWcag = {
       );
     }
 
-    const output = scored
+    const output = shown
       .map(({ sc, labels }) => {
-        const where = args.understanding || closest ? `\nmatched in: ${labels.join(', ')}` : '';
-        return `**${sc.num} ${sc.handle}** (${levelTag(sc)})\n${truncate(sc.title, 150)}${where}`;
+        const where = args.understanding || closest ? ` (matched in: ${labels.join(', ')})` : '';
+        return `- **${sc.num} ${sc.handle}** (${levelTag(sc)}): ${truncate(sc.title, 150)}${where}`;
       })
-      .join('\n\n---\n\n');
+      .join('\n');
 
     const heading = closest
-      ? `# No criterion text contains every word of "${args.query}". Closest ${scored.length}, Understanding prose included, best first`
-      : `# Search Results for "${args.query}" (${scored.length} found)`;
+      ? `# No criterion text contains every word of "${args.query}". Closest ${shown.length}, Understanding prose included, best first`
+      : `# Search Results for "${args.query}" (${countLabel(shown.length, total)})`;
     return textResponse(`${heading}\n\n${output}`, data);
   },
 };
@@ -964,10 +984,12 @@ const searchTechniques = {
         description:
           'Also search the technique bodies — description, examples and tests — and report which section matched',
       },
+      limit: limitProperty,
     },
     required: ['query'],
   },
   handler: async (args) => {
+    const limit = searchLimit(args);
     const all = await getAllTechniques();
 
     // Bodies are read locally only (bundle plus cache): a search must never
@@ -995,12 +1017,14 @@ const searchTechniques = {
       if (hit) scored.push({ item: t, index, ...hit });
     }
     scored.sort((a, b) => b.score - a.score || a.index - b.index);
+    const shown = scored.slice(0, limit);
 
     const data = {
       version: getVersion(),
       query: args.query,
       description: args.description === true,
-      results: scored.map(({ item, score, labels }) => ({ ...techniqueSummary(item), score, matchedIn: labels })),
+      total: scored.length,
+      results: shown.map(({ item, score, labels }) => ({ ...techniqueSummary(item), score, matchedIn: labels })),
     };
 
     if (scored.length === 0) {
@@ -1010,15 +1034,15 @@ const searchTechniques = {
       return textResponse(`No techniques found matching "${args.query}".${hint}`, data);
     }
 
-    const output = scored
+    const output = shown
       .map(({ item: t, labels }) => {
-        const where = args.description ? `\nmatched in: ${labels.join(', ')}` : '';
-        return `**${t.id}** (${t.technology}): ${t.title}${where}`;
+        const where = args.description ? ` (matched in: ${labels.join(', ')})` : '';
+        return `- **${t.id}** (${t.technology}): ${t.title}${where}`;
       })
-      .join(args.description ? '\n\n' : '\n');
+      .join('\n');
 
     return textResponse(
-      `# Technique Search Results for "${args.query}" (${scored.length} found)\n\n${output}`,
+      `# Technique Search Results for "${args.query}" (${countLabel(shown.length, scored.length)})\n\n${output}`,
       data
     );
   },
@@ -1134,23 +1158,25 @@ const searchGlossary = {
   description: 'Searches the WCAG glossary by keyword.',
   inputSchema: {
     type: 'object',
-    properties: { query: { type: 'string', description: 'Search query' } },
+    properties: { query: { type: 'string', description: 'Search query' }, limit: limitProperty },
     required: ['query'],
   },
   handler: async (args) => {
+    const limit = searchLimit(args);
     const matches = await searchTerms(args.query);
-    const data = { version: getVersion(), query: args.query, results: matches.map(termData) };
+    const shown = matches.slice(0, limit);
+    const data = { version: getVersion(), query: args.query, total: matches.length, results: shown.map(termData) };
 
     if (matches.length === 0) {
       return textResponse(`No glossary terms found matching "${args.query}".`, data);
     }
 
-    const output = matches
-      .map((t) => `**${t.name}**\n${truncate(htmlToText(t.definition), 150)}`)
-      .join('\n\n---\n\n');
+    const output = shown
+      .map((t) => `- **${t.name}**: ${truncate(htmlToText(t.definition), 150)}`)
+      .join('\n');
 
     return textResponse(
-      `# Glossary Search Results for "${args.query}" (${matches.length} found)\n\n${output}`,
+      `# Glossary Search Results for "${args.query}" (${countLabel(shown.length, matches.length)})\n\n${output}`,
       data
     );
   },

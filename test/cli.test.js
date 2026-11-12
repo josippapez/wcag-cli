@@ -152,24 +152,42 @@ test('search-wcag --understanding keeps the multi-word query joined', () => {
 test('search-wcag matches on words, not one contiguous substring', () => {
   const forward = run(['search-wcag', 'keyboard', 'focus', '--understanding']);
   const reversed = run(['search-wcag', 'focus', 'keyboard', '--understanding']);
-  const count = (out) => out.match(/\((\d+) found\)/)?.[1];
+  const count = (out) => out.match(/(\d+) found/)?.[1];
   assert.equal(count(forward), count(reversed), 'word order must not change recall');
 
-  assert.match(run(['search-wcag', 'placeholders', '--understanding']), /found\)/);
-  assert.match(run(['search-wcag', 'colour', '--understanding']), /found\)/);
-  assert.match(run(['search-wcag', 'screenreader', '--understanding']), /found\)/);
+  assert.match(run(['search-wcag', 'placeholders', '--understanding']), / found/);
+  assert.match(run(['search-wcag', 'colour', '--understanding']), / found/);
+  assert.match(run(['search-wcag', 'screenreader', '--understanding']), / found/);
 });
 
 test('search-wcag ranks a handle match above a prose mention', () => {
   const out = run(['search-wcag', 'keyboard']);
-  const first = out.match(/^\*\*([0-9.]+) /m)?.[1];
+  const first = out.match(/^- \*\*([0-9.]+) /m)?.[1];
   assert.equal(first, '2.1.1', 'the criterion actually named Keyboard should lead');
+});
+
+test('searches show 10 results by default, one line each, and --limit changes that', () => {
+  const lines = (out) => out.split('\n').filter((line) => line.startsWith('- **'));
+  const def = run(['search-techniques', 'focus', '--description']);
+  assert.match(def, /\(10 of \d+ found, --limit for more\)/);
+  assert.equal(lines(def).length, 10);
+  assert.equal(lines(run(['search-glossary', 'user', '--limit', '3'])).length, 3);
+  assert.equal(lines(run(['search-wcag', 'video captions', '--limit', '3'])).length, 3);
+  const json = JSON.parse(run(['search-wcag', 'keyboard', '--limit', '2', '--json']));
+  assert.equal(json.results.length, 2);
+  assert.ok(json.total > 2);
+});
+
+test('--limit below 1 is an error', () => {
+  const r = runFail(['search-wcag', 'keyboard', '--limit', '0']);
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /invalid limit 0/);
 });
 
 test('search-glossary is word-order independent too', () => {
   // The header echoes the query verbatim, so compare the matched terms rather
   // than the whole output.
-  const terms = (out) => out.match(/^\*\*.+\*\*$/gm);
+  const terms = (out) => out.match(/^- \*\*.+?\*\*:/gm);
   assert.deepEqual(
     terms(run(['search-glossary', 'contrast', 'ratio'])),
     terms(run(['search-glossary', 'ratio', 'contrast']))

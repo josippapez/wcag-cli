@@ -1,4 +1,3 @@
 # Technique Search Results for "newsletter" (1 found)
 
-**H37** (html): Using alt attributes on img elements
-matched in: Examples
+- **H37** (html): Using alt attributes on img elements (matched in: Examples)
